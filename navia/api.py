@@ -12,7 +12,9 @@ from . import combat as combatm
 from . import config
 from . import crafting
 from . import explore as explorem
+from . import finder
 from . import places as placesm
+from . import trade
 from . import world
 from .character import GameError
 from .db import content, execute, query
@@ -151,7 +153,8 @@ def state_payload(ch, ctx=None):
             "stat_points": ch["stat_points"], "hp": round(ch["hp"], 1), "max_hp": d["max_hp"],
             "vigor": round(ch["vigor"], 1), "max_vigor": d["max_vigor"], "toxicity": round(ch["toxicity"], 1),
             "max_tox": d["max_tox"], "energy": round(ch["energy"], 2), "max_energy": config.ENERGY_MAX,
-            "energy_per_hour": config.ENERGY_PER_HOUR, "coins": ch["coins"],
+            "energy_per_hour": config.ENERGY_PER_HOUR, "energy_per_meter": config.ENERGY_PER_METER,
+            "coins": ch["coins"], "money": chm.money(ch["coins"]),
             "base_stats": ch["stats"], "stats": d["stats"], "mutations": ch["mutations"],
             "mutation_slots": d["mutation_slots"],
             "effects": [{"name": e["name"], "stats": e.get("stats", {}), "left": int(e["until"] - time.time())}
@@ -175,6 +178,8 @@ def state_payload(ch, ctx=None):
         "omens": omens,
         "energy_modes": config.EXPLORE_MODES,
         "journal": journal,
+        "merchants": trade.mine(ch["user_id"]),
+        "merchant_cfg": {"day_cost": config.MERCHANT_DAY_COST, "max_days": config.MERCHANT_MAX_DAYS},
     }
 
 
@@ -205,7 +210,8 @@ def get_config():
     return jsonify({"name": config.GAME_NAME, "subtitle": config.GAME_SUBTITLE, "debug": config.DEBUG_MOVEMENT,
                     "start": config.DEFAULT_START, "modes": config.EXPLORE_MODES,
                     "interact_radius": config.INTERACT_RADIUS_M, "camp_radius": config.CAMP_RADIUS_M,
-                    "stat_names": chm.STAT_NAMES, "tiles": config.map_tiles()})
+                    "stat_names": chm.STAT_NAMES, "tiles": config.map_tiles(),
+                    "currency": {"names": config.CURRENCY, "per": config.GROSZE_PER_DOBROTA}})
 
 
 @bp.get("/content")
@@ -242,9 +248,19 @@ def move():
         dt = max(1.0, t - ch["last_move"])
         if world.dist_m(ch["lat"], ch["lng"], lat, lng) / dt > config.MAX_SPEED_MS:
             raise GameError("Poruszasz się za szybko — czyżby czary?")
-    ch["lat"], ch["lng"], ch["last_move"] = lat, lng, t
+    gained = 0.0
+    if ch["lat"] is not None and config.ENERGY_PER_METER > 0:
+        # energia za chodzenie: pomijamy drgania GPS, jazdę pojazdem i skoki/teleporty
+        step = world.dist_m(ch["lat"], ch["lng"], lat, lng)
+        dt = max(0.5, t - (ch.get("last_move") or t - 1))
+        if config.WALK_MIN_STEP_M <= step <= config.WALK_MAX_STEP_M and step / dt <= config.WALK_MAX_SPEED_MS:
+            before = ch["energy"]
+            ch["energy"] = min(config.ENERGY_MAX, ch["energy"] + step * config.ENERGY_PER_METER)
+            gained = ch["energy"] - before
+    if gained or not ch.get("last_move") or world.dist_m(ch["lat"] or lat, ch["lng"] or lng, lat, lng) >= config.WALK_MIN_STEP_M:
+        ch["lat"], ch["lng"], ch["last_move"] = lat, lng, t
     world.ensure_osm(lat, lng)
-    return respond(ch, {"ok": True})
+    return respond(ch, {"ok": True, "energy_gained": round(gained, 1)})
 
 
 @bp.get("/world")
@@ -272,8 +288,9 @@ def get_world():
     for b in campm.bases_visible(ch["user_id"]):
         rows = query("SELECT * FROM structures WHERE owner_id=? AND site='base'", (b["owner_id"],))
         bases.append({**b, "structures": [campm.structure_view(s) for s in rows]})
+    merchants = trade.merchants_near(lat, lng, 2500, viewer_id=ch["user_id"], with_stock=False)
     return jsonify({"zones": pl["zones"], "power": pl["power"], "buildings": pl["buildings"],
-                    "camps": camps, "players": players, "bases": bases})
+                    "camps": camps, "players": players, "bases": bases, "merchants": merchants})
 
 
 @bp.post("/explore")
@@ -451,3 +468,50 @@ def home_invite():
 def home_uninvite():
     ch = _char()
     return respond(ch, {"messages": [campm.uninvite(ch, (_body().get("username") or "").strip())]})
+
+
+# --------------------------------------------------------------------------- tropiciel
+@bp.get("/find")
+@login_required
+def find_item():
+    ch = _char()
+    chm.save(ch)
+    return jsonify(finder.find(ch, request.args.get("item", "")))
+
+
+# --------------------------------------------------------------------------- kramy graczy
+@bp.get("/merchant/<int:mid>")
+@login_required
+def merchant_view(mid):
+    ch = _char()
+    m = trade.get(mid)
+    v = trade.view(m, ch["user_id"])
+    v["dist"] = round(world.dist_m(ch["lat"], ch["lng"], m["lat"], m["lng"]))
+    return jsonify(v)
+
+
+@bp.post("/merchant/create")
+@login_required
+def merchant_create():
+    ch = _char()
+    b = _body()
+    return respond(ch, {"messages": [trade.create(ch, b.get("name"), b.get("days", 1))]})
+
+
+@bp.post("/merchant/<int:mid>/<op>")
+@login_required
+def merchant_op(mid, op):
+    ch = _char()
+    b = _body()
+    ops = {
+        "stock": lambda: trade.stock_add(ch, mid, b.get("item"), b.get("qty", 1), b.get("price", 1)),
+        "unstock": lambda: trade.stock_remove(ch, mid, b.get("item")),
+        "extend": lambda: trade.extend(ch, mid, b.get("days", 1)),
+        "collect": lambda: trade.collect(ch, mid),
+        "close": lambda: trade.close(ch, mid),
+        "buy": lambda: trade.buy(ch, mid, b.get("item"), b.get("qty", 1)),
+    }
+    if op not in ops:
+        raise GameError("Nieznana akcja.")
+    msg = ops[op]()
+    return respond(ch, {"messages": [msg], "merchant": trade.view(trade.get(mid), ch["user_id"])})

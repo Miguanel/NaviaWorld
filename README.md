@@ -131,6 +131,25 @@ Na produkcji ustaw `NAVIA_DEBUG=0`. Plik `render.yaml` robi to sam. **Admin ma s
 - **Wzór losowania:** `waga = waga bazowa × mnożnik terenu × mnożniki punktów mocy (zależne od odległości) × pora dnia × tryb`. Gra zamienia wagi na procenty. W grze zobaczysz je pod „Szepty okolicy”, a w panelu admina w **Symulatorze szans**.
 - Zdarzenia z puli mają trzy rodzaje: **potwór**, **znalezisko** albo **zdarzenie fabularne**. Fabularne mogą mieć rozgałęzienia, na przykład dobre zakończenie, złe zakończenie albo potwora na końcu.
 
+### Waluta: dobroty i grosze
+1 dobrota = 100 groszy. Gra pokazuje kwoty jako „2 dobroty 40 gr”. W bazie i w panelu admina ceny wpisujesz w groszach.
+
+### Tropiciel: strzałki do towarów
+Przycisk 🧭 na mapie, „Gdzie zdobyć więcej?” przy przedmiocie albo kliknięcie brakującego składnika w recepturze. Gra pokazuje w promieniu kilku kilometrów, gdzie zdobyć dany towar:
+- **zbieractwo**: najbliższy las, łąka, rzeka… i potrzebne narzędzie;
+- **eksploracja i polowanie**: miejsca, gdzie zdarzenie albo potwór z tym łupem trafia się najczęściej, z przybliżoną szansą i podpowiedzią „częściej nocą”;
+- **sklepy w budynkach**, **targowiska** (dzisiejszy asortyment) i **kramy innych łowców**;
+- receptury, z których można to wytworzyć.
+
+Na mapie pojawiają się kolorowe strzałki wokół gracza. Dotknięcie strzałki pokazuje dymek z opisem: dokąd prowadzi, jak daleko i w jakim kierunku. Po dotarciu na miejsce gra daje znać.
+
+### Targowiska i kramy łowców
+- **Targowisko** to nowy budynek. W prawdziwym świecie pojawia się na rynkach, placach i przy ratuszach, czyli w centrach miast. Każdego dnia przyjeżdżają tam inni kupcy z innym towarem i innymi cenami. Są też stałe kramy i skup.
+- **Kram łowcy**: w Obozowisku możesz nająć kupca, który stanie tam, gdzie jesteś. Płacisz z góry z własnej sakiewki (domyślnie 50 gr za dzień, najwyżej 14 dni). Wykładasz towar z torby i ustalasz ceny. Inni gracze kupują przy kramie, a pieniądze trafiają do szkatuły, którą odbierasz w każdej chwili. Zwinięcie kramu oddaje niesprzedany towar i utarg.
+
+### Energia za chodzenie
+Każdy przebyty metr daje **+1 energii** (`ENERGY_PER_METER` w `config.py` albo zmienna `NAVIA_ENERGY_PER_M`). Gra pomija drgania GPS (poniżej 4 m), jazdę szybszą niż ok. 29 km/h oraz skoki i teleporty powyżej 200 m.
+
 ### Walka (turowa, jak w Pokémonach)
 W każdej turze wybierasz jedną z czterech opcji:
 - **Atak:** cięcie, szybkie pchnięcie (zawsze pierwsze), potężny cios, finta (osłabia obronę wroga);
@@ -180,7 +199,9 @@ navia/explore.py       – losowanie zdarzeń
 navia/combat.py        – walka turowa
 navia/crafting.py      – receptury, narzędzia, katalizatory
 navia/camp.py          – obozy, siedlisko, konstrukcje
-navia/places.py        – budynki i zbieractwo
+navia/places.py        – budynki, targowiska i zbieractwo
+navia/trade.py         – kramy łowców (kupcy graczy)
+navia/finder.py        – tropiciel: gdzie zdobyć dany towar
 navia/character.py     – postać, cechy, ekwipunek, mutacje
 navia/api.py, admin.py – REST API gry i panelu
 static/                – interfejs (HTML/CSS/JS), PWA, ikony

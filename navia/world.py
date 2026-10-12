@@ -254,6 +254,9 @@ OSM_RULES = [
     ("amenity", "monastery", "building", "klasztor", 0, 1),
     ("building", "monastery", "building", "klasztor", 0, 1),
     ("craft", "blacksmith", "building", "kuznia", 0, 1),
+    ("amenity", "marketplace", "building", "targ", 0, 1),
+    ("place", "square", "building", "targ", 0, 1),
+    ("amenity", "townhall", "building", "targ", 0, 1),
     ("landuse", "forest", "zone", "las", 320, 1),
     ("natural", "wood", "zone", "las", 280, 1),
     ("natural", "wetland", "zone", "bagno", 220, 1),
@@ -276,6 +279,8 @@ def _osm_query(s, w, n, e):
  nwr["natural"~"^(spring|wood|water|wetland|peak)$"]{b};
  nwr["craft"="blacksmith"]{b};
  nwr["building"="monastery"]{b};
+ nwr["amenity"~"^(marketplace|townhall)$"]{b};
+ nwr["place"="square"]{b};
 );
 out center 600;"""
 

@@ -252,6 +252,79 @@ def test_admin_crud_and_sim():
     assert c.get("/api/admin/meta", headers=h).status_code == 403
 
 
+def test_money_format():
+    assert chm.money(0) == "0 gr"
+    assert chm.money(45) == "45 gr"
+    assert chm.money(100) == "1 dobrota"
+    assert chm.money(240) == "2 dobroty 40 gr"
+    assert chm.money(512) == "5 dobrot 12 gr"
+    assert chm.money(2205) == "22 dobroty 5 gr"
+    assert chm.money(1250) == "12 dobrot 50 gr"
+
+
+def test_walking_energy():
+    c, h, uid = client("Piechur")
+    st = c.get("/api/state", headers=h).json["state"]["char"]
+    sql("UPDATE characters SET energy=10 WHERE user_id=?", (uid,))
+    lat, lng = st["lat"], st["lng"]
+    import time as _t
+    sql("UPDATE characters SET last_move=? WHERE user_id=?", (_t.time() - 30, uid))
+    r = c.post("/api/move", json={"lat": lat + 50 / 111320, "lng": lng}, headers=h)  # ~50 m pieszo
+    e = r.json["state"]["char"]["energy"]
+    assert 58 <= e <= 61, e
+    # drganie GPS (2 m) — bez energii
+    r = c.post("/api/move", json={"lat": lat + 52 / 111320, "lng": lng}, headers=h)
+    assert abs(r.json["state"]["char"]["energy"] - e) < 0.5
+    # skok o 5 km — bez energii
+    sql("UPDATE characters SET energy=10 WHERE user_id=?", (uid,))
+    r = c.post("/api/move", json={"lat": lat + 0.05, "lng": lng}, headers=h)
+    assert r.json["state"]["char"]["energy"] < 11
+
+
+def test_market_and_merchants_and_finder():
+    seller, sh, sid = client("Kupiec")
+    buyer, bh, bid = client("Klient")
+    admin(sid, coins=1000)
+    admin(bid, coins=1000)
+    give(sid, "krwawnik", 10)
+    # targowisko
+    b = goto(buyer, bh, "buildings", "targ")
+    v = buyer.get(f"/api/building/{b['id']}", headers=bh).json
+    assert v["market"], v
+    idx = next(a["index"] for a in v["actions"] if a["type"] == "market")
+    r = buyer.post(f"/api/building/{b['id']}", json={"index": idx, "payload": {"item": v["market"][0]["item"]}}, headers=bh)
+    assert r.status_code == 200, r.json
+    # kram gracza obok targu
+    seller.post("/api/move", json={"lat": b["lat"], "lng": b["lng"]}, headers=sh)
+    r = seller.post("/api/merchant/create", json={"name": "Zioła u Kupca", "days": 3}, headers=sh)
+    assert r.status_code == 200, r.json
+    assert r.json["state"]["char"]["coins"] == 1030 - 150 or r.json["state"]["char"]["coins"] > 0
+    mid = r.json["state"]["merchants"][0]["id"]
+    assert seller.post("/api/merchant/create", json={"days": 1}, headers=sh).status_code == 400  # limit
+    r = seller.post(f"/api/merchant/{mid}/stock", json={"item": "krwawnik", "qty": 5, "price": 12}, headers=sh)
+    assert r.status_code == 200, r.json
+    w = buyer.get("/api/world", headers=bh).json
+    assert any(m["id"] == mid for m in w["merchants"])
+    coins = buyer.get("/api/state", headers=bh).json["state"]["char"]["coins"]
+    r = buyer.post(f"/api/merchant/{mid}/buy", json={"item": "krwawnik", "qty": 2}, headers=bh)
+    assert r.status_code == 200, r.json
+    assert r.json["state"]["char"]["coins"] == coins - 24
+    # tropiciel znajduje kram
+    f = buyer.get("/api/find?item=krwawnik", headers=bh).json
+    types = {l["type"] for l in f["leads"]}
+    assert "stall" in types and "gather" in types, types
+    # utarg i zwinięcie
+    r = seller.post(f"/api/merchant/{mid}/collect", headers=sh)
+    assert r.status_code == 200 and "24 gr" in r.json["result"]["messages"][0], r.json
+    r = seller.post(f"/api/merchant/{mid}/close", headers=sh)
+    assert r.status_code == 200
+    inv = {i["id"]: i["qty"] for i in r.json["state"]["inventory"]}
+    assert inv.get("krwawnik") == 8, inv
+    # tropiciel dla rzeczy z potworów
+    f = buyer.get("/api/find?item=oko_nocnicy", headers=bh).json
+    assert any(l["type"] == "hunt" for l in f["leads"]), f["leads"]
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

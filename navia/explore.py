@@ -97,7 +97,7 @@ def apply_outcome(ch, out, mult=1.0):
         v = max(-ch["coins"], v)
         ch["coins"] += v
         if v:
-            msgs.append(f"{'+' if v > 0 else ''}{v} groszy")
+            msgs.append(f"{'+' if v > 0 else ''}{chm.money(v)}")
     for i in out.get("items") or []:
         if random.random() <= float(i.get("chance", 1)):
             q = max(1, int(round(_range(i.get("qty", 1)) * mult)))

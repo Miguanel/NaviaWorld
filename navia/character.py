@@ -14,6 +14,28 @@ BASE_STATS = {"sila": 5, "zrecznosc": 5, "witalnosc": 5, "moc": 5, "odpornosc": 
 CHAR_JSON = ["stats", "mutations", "effects", "cooldowns", "combat", "contracts"]
 
 
+def plural(n, one, few, many):
+    n = abs(int(n))
+    if n == 1:
+        return one
+    if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14:
+        return few
+    return many
+
+
+def money(g):
+    """Kwota w groszach → „2 dobroty 40 gr”."""
+    g = int(round(g))
+    sign = "−" if g < 0 else ""
+    d, r = divmod(abs(g), config.GROSZE_PER_DOBROTA)
+    parts = []
+    if d:
+        parts.append(f"{d} {plural(d, *config.CURRENCY)}")
+    if r or not d:
+        parts.append(f"{r} gr")
+    return sign + " ".join(parts)
+
+
 class GameError(Exception):
     """Błąd zgłaszany graczowi (np. brak składników)."""
 

@@ -130,6 +130,7 @@ const Game = {
     if (!MapView.disabled) MapView.meRange.setRadius(this.cfg.interact_radius);
     this.applyState(r.state);
     this.loadWorld(true);
+    Finder.restore();
     clearInterval(this._iv1); clearInterval(this._iv2);
     this._iv1 = setInterval(() => this.refresh(), 30000);
     this._iv2 = setInterval(() => this.loadWorld(), 25000);
@@ -143,6 +144,7 @@ const Game = {
     $('#sheet-close').addEventListener('click', () => Sheet.close());
     $('#scrim').addEventListener('click', () => Sheet.close());
     $('#btn-center').addEventListener('click', () => MapView.center());
+    $('#btn-find').addEventListener('click', () => Finder.open());
     $('#btn-gps').addEventListener('click', () => (this.gps ? this.stopGps() : this.startGps()));
     $('#btn-teleport').addEventListener('click', () => {
       this.teleport = !this.teleport;
@@ -196,11 +198,11 @@ const Game = {
     const c = this.state.char;
     $('#h-name').textContent = c.name;
     $('#h-lvl').textContent = `poziom ${c.level} · ${c.xp}/${c.xp_next} PD`;
-    $('#h-coins').textContent = `${c.coins} gr`;
+    $('#h-coins').textContent = money(c.coins);
     bar($('#b-hp'), c.hp, c.max_hp); $('#t-hp').textContent = `Zdrowie ${Math.round(c.hp)}/${c.max_hp}`;
     bar($('#b-vig'), c.vigor, c.max_vigor); $('#t-vig').textContent = `Wigor ${Math.round(c.vigor)}/${c.max_vigor}`;
     bar($('#b-tox'), c.toxicity, c.max_tox); $('#t-tox').textContent = `Toksyny ${Math.round(c.toxicity)}/${c.max_tox}`;
-    bar($('#b-en'), c.energy, c.max_energy); $('#t-en').textContent = `Energia ${Math.floor(c.energy)}/${c.max_energy} · +${c.energy_per_hour}/h`;
+    bar($('#b-en'), c.energy, c.max_energy); $('#t-en').textContent = `Energia ${Math.floor(c.energy)}/${c.max_energy} · +${c.energy_per_hour}/h · +${c.energy_per_meter}/m`;
     bar($('#b-xp'), c.xp, c.xp_next);
     $('#stat-badge').classList.toggle('hidden', !c.stat_points);
   },
@@ -217,6 +219,11 @@ const Game = {
       const k = this.content.power_kinds[p.kind] || {};
       box.append(h('span', { class: 'chip', style: { borderColor: k.color }, title: k.description },
         h('span', { style: { color: k.color } }, p.glyph), `${p.name || p.kind_name} ${Math.round(p.infl * 100)}%`));
+    }
+    if (typeof Finder !== 'undefined' && Finder.active) {
+      const n = Finder.nearest();
+      box.append(h('button', { class: 'chip trail', onclick: () => Finder.showLeads(Finder.active.res) },
+        g(Finder.active.item.glyph), ` ${Finder.active.item.name}${n ? ' · ' + (n.d < 30 ? 'tutaj' : fmtDist(n.d)) : ''}`));
     }
     for (const e of this.state.char.effects.slice(0, 3)) {
       box.append(h('span', { class: 'chip', title: this.fmtStats(e.stats), style: { borderColor: 'var(--moss)' } }, '✧ ' + e.name));
@@ -268,6 +275,7 @@ const Game = {
   setPosition(lat, lng) {
     this.pos = [lat, lng];
     MapView.setMe(lat, lng);
+    if (Finder.active) { Finder.check(); this.renderCtx(); }
     clearTimeout(this.moveTimer);
     this.moveTimer = setTimeout(() => this.sendMove(), this.gps ? 1500 : 250);
   },
@@ -276,8 +284,27 @@ const Game = {
     try {
       const r = await API.post('/move', { lat: this.pos[0], lng: this.pos[1] });
       this.applyState(r.state, { silent: true });
+      if (r.result && r.result.energy_gained >= 1) this.energyBlip(r.result.energy_gained);
       if (!this.worldAt || distM(this.worldAt[0], this.worldAt[1], this.pos[0], this.pos[1]) > 250) this.loadWorld(true);
     } catch (e) { toast(e.message, 'err'); }
+  },
+
+  energyBlip(n) {
+    const el = $('#t-en');
+    if (!el) return;
+    const b = h('span', { class: 'energy-blip' }, `+${Math.round(n)}`);
+    el.parentElement.append(b);
+    setTimeout(() => b.remove(), 1200);
+  },
+
+  openMerchant(id) { Market.open(id); },
+  clearTrail() { Finder.clear(); MapView.map.closePopup(); },
+  focusLead(i) {
+    const l = Finder.active && Finder.active.leads[i];
+    if (!l || MapView.disabled) return;
+    MapView.follow = false;
+    MapView.map.closePopup();
+    MapView.map.setView([l.lat, l.lng], Math.max(16, MapView.map.getZoom()));
   },
 
   startGps() {
@@ -445,8 +472,8 @@ const Game = {
     ];
     const quick = h('div', { class: 'row wrap' });
     for (const a of b.actions) {
-      if (['shop', 'sell', 'learn', 'contracts'].includes(a.type)) continue;
-      const cost = a.cost ? ` (${a.cost} gr)` : a.item ? ` (${this.content.items[a.item]?.name})` : '';
+      if (['shop', 'sell', 'learn', 'contracts', 'market'].includes(a.type)) continue;
+      const cost = a.cost ? ` (${money(a.cost)})` : a.item ? ` (${this.content.items[a.item]?.name})` : '';
       quick.append(h('button', { class: 'btn', onclick: () => this.buildingAct(b, a.index, {}) }, a.label + cost));
     }
     if (quick.childNodes.length) parts.push(quick);
@@ -454,32 +481,46 @@ const Game = {
       if (a.type === 'shop' && b.shop.length) {
         parts.push(h('div', { class: 'section-title' }, a.label));
         parts.push(...b.shop.map(s => h('div', { class: 'row', style: { padding: '5px 0', borderBottom: '1px solid rgba(59,50,41,.5)' } },
-          g(s.glyph), h('span', { title: s.description }, s.name), h('span', { class: 'spacer' }), h('span', { class: 'sc muted' }, s.price + ' gr'),
+          g(s.glyph), h('span', { title: s.description }, s.name), h('span', { class: 'spacer' }), h('span', { class: 'sc muted' }, money(s.price)),
+          h('button', { class: 'btn small', disabled: ch.coins < s.price, onclick: () => this.buildingAct(b, a.index, { item: s.item, qty: 1 }) }, 'Kup'))));
+      }
+      if (a.type === 'market' && b.market) {
+        parts.push(h('div', { class: 'section-title' }, a.label));
+        parts.push(h('p', { class: 'faint', style: { fontSize: '13px', margin: '0 0 6px' } }, 'Każdego dnia przyjeżdżają inni kupcy z innym towarem.'));
+        parts.push(...b.market.map(s => h('div', { class: 'row', style: { padding: '5px 0', borderBottom: '1px solid rgba(59,50,41,.5)' } },
+          g(s.glyph), h('span', { title: s.description }, s.name, h('div', { class: 'faint', style: { fontSize: '11px' } }, s.trader)), h('span', { class: 'spacer' }),
+          h('span', { class: 'sc muted' }, money(s.price)),
           h('button', { class: 'btn small', disabled: ch.coins < s.price, onclick: () => this.buildingAct(b, a.index, { item: s.item, qty: 1 }) }, 'Kup'))));
       }
       if (a.type === 'sell') {
         parts.push(h('div', { class: 'section-title' }, `${a.label} · ${Math.round(b.sell_rate * 100)}% wartości`));
         if (!b.sellable.length) parts.push(h('div', { class: 'muted' }, 'Nie masz nic na sprzedaż.'));
         parts.push(...b.sellable.map(s => h('div', { class: 'row', style: { padding: '5px 0', borderBottom: '1px solid rgba(59,50,41,.5)' } },
-          g(s.glyph), h('span', {}, `${s.name} ×${s.qty}`), h('span', { class: 'spacer' }), h('span', { class: 'sc muted' }, s.price + ' gr'),
+          g(s.glyph), h('span', {}, `${s.name} ×${s.qty}`), h('span', { class: 'spacer' }), h('span', { class: 'sc muted' }, money(s.price)),
           h('button', { class: 'btn small', onclick: () => this.buildingAct(b, a.index, { item: s.item, qty: 1 }) }, '1'),
           s.qty > 1 ? h('button', { class: 'btn small', onclick: () => this.buildingAct(b, a.index, { item: s.item, qty: s.qty }) }, 'Wszystko') : null)));
       }
       if (a.type === 'learn' && b.teaches.length) {
         parts.push(h('div', { class: 'section-title' }, a.label));
         parts.push(...b.teaches.map(t => h('div', { class: 'card' }, h('div', { class: 'row' }, h('strong', {}, t.name), h('span', { class: 'spacer' }),
-          t.known ? h('span', { class: 'chip' }, 'znasz') : h('button', { class: 'btn small', disabled: ch.coins < t.price || ch.level < t.min_level, onclick: () => this.buildingAct(b, a.index, { recipe: t.recipe }) }, `${t.price} gr`)),
+          t.known ? h('span', { class: 'chip' }, 'znasz') : h('button', { class: 'btn small', disabled: ch.coins < t.price || ch.level < t.min_level, onclick: () => this.buildingAct(b, a.index, { recipe: t.recipe }) }, money(t.price))),
           t.description ? h('div', { class: 'muted', style: { fontSize: '13px', marginTop: '4px' } }, t.description) : null,
           t.min_level > 1 ? h('div', { class: 'faint', style: { fontSize: '12px' } }, `od poziomu ${t.min_level}`) : null)));
       }
       if (a.type === 'contracts' && b.contracts) {
         parts.push(h('div', { class: 'section-title' }, a.label));
-        parts.push(...b.contracts.map(c => h('div', { class: 'card' }, h('div', { class: 'row' }, h('strong', {}, c.title), h('span', { class: 'spacer' }), h('span', { class: 'sc', style: { color: 'var(--gold)' } }, `${c.reward} gr`)),
+        parts.push(...b.contracts.map(c => h('div', { class: 'card' }, h('div', { class: 'row' }, h('strong', {}, c.title), h('span', { class: 'spacer' }), h('span', { class: 'sc', style: { color: 'var(--gold)' } }, money(c.reward))),
           h('p', { style: { margin: '4px 0', fontSize: '14px' } }, c.text),
           h('div', { class: 'row' }, h('span', { class: 'faint', style: { fontSize: '12px' } }, `poz. ${c.level} · ${c.xp} PD`), h('span', { class: 'spacer' }),
             c.done && !c.claimed ? h('button', { class: 'btn small primary', onclick: () => this.buildingAct(b, a.index, { contract: c.id, op: 'claim' }) }, 'Odbierz nagrodę')
               : c.taken ? h('span', { class: 'chip' }, 'przyjęte') : h('button', { class: 'btn small', onclick: () => this.buildingAct(b, a.index, { contract: c.id, op: 'take' }) }, 'Przyjmij')))));
       }
+    }
+    if (b.stalls && b.stalls.length) {
+      parts.push(h('div', { class: 'section-title' }, 'Kramy łowców w pobliżu'));
+      parts.push(...b.stalls.map(m => h('div', { class: 'row', style: { padding: '5px 0', borderBottom: '1px solid rgba(59,50,41,.5)' } },
+        g('🧺'), h('span', {}, m.name, h('div', { class: 'faint', style: { fontSize: '11px' } }, `${m.owner} · ${m.stock.length} ${plural(m.stock.length, 'towar', 'towary', 'towarów')}`)), h('span', { class: 'spacer' }),
+        h('button', { class: 'btn small', onclick: () => Market.open(m.id) }, 'Zobacz'))));
     }
     parts.push(h('button', { class: 'btn ghost block', style: { marginTop: '14px' }, onclick: () => Modal.close() }, 'Wyjdź'));
     Modal.open(parts);
@@ -558,6 +599,7 @@ const Game = {
         h('div', { class: 'req' }, s.guests.length ? s.guests.map(gu => h('span', { class: 'chip' }, gu, h('button', { class: 'x', style: { background: 'none', border: 'none', cursor: 'pointer', color: 'var(--bone-dim)' }, onclick: () => this.post('/home/uninvite', { username: gu }) }, '✕'))) : h('span', { class: 'muted' }, 'Nikt nie zna drogi.')),
         h('div', { class: 'row', style: { marginTop: '8px' } }, inp, h('button', { class: 'btn small', onclick: () => this.post('/home/invite', { username: inp.value }) }, 'Zaproś'))));
     }
+    Market.campSection(body);
     body.append(h('div', { class: 'section-title' }, 'Sprzęt w zasięgu'));
     if (!st.structures.length) body.append(h('p', { class: 'muted' }, s.in_camp || s.at_base ? 'Nic tu nie stoi. Postaw konstrukcję z torby.' : 'Stań w obozie albo siedlisku, żeby zobaczyć sprzęt.'));
     for (const x of st.structures) {

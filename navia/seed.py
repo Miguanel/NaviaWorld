@@ -727,6 +727,17 @@ BUILDINGS = [
                   {"type": "shop", "label": "Dary żerców"}],
          shop=[{"item": "jemiola", "price": 15}, {"item": "swieca", "price": 4}, {"item": "woda_swiecona", "price": 12}],
          teaches=[{"recipe": "r_olej_czarci", "price": 60}, {"recipe": "r_m_oko", "price": 110}]),
+    dict(id="targ", name="Targowisko", glyph="⚖️", weight=0.6,
+         description="Rynek pod ratuszem, kramy pod płóciennymi daszkami, gwar w pięciu językach. Każdego dnia przyjeżdżają inni kupcy z innym towarem.",
+         names=["Targ pod Ratuszem", "Rynek {imie}a", "Jarmark Świętojański", "Targowisko przy Bramie", "Rynek Solny"],
+         actions=[{"type": "market", "label": "Kramy kupców (dziś)", "count": 14},
+                  {"type": "shop", "label": "Stałe kramy"},
+                  {"type": "sell", "label": "Sprzedaj kupcom", "rate": 0.65},
+                  {"type": "rumors", "label": "Posłuchaj targowych plotek"}],
+         shop=[{"item": "chleb", "price": 3}, {"item": "fiolka", "price": 3}, {"item": "loj", "price": 3},
+               {"item": "krzesiwo", "price": 7}, {"item": "sierp", "price": 16}, {"item": "siekiera", "price": 22},
+               {"item": "wedka", "price": 10}, {"item": "mozdzierz", "price": 16}, {"item": "sol", "price": 4},
+               {"item": "wosk", "price": 4}]),
     dict(id="straznica", name="Strażnica", glyph="🛡️", weight=0.8,
          description="Drewniana wieża przy trakcie. Na drzwiach tablica, a na niej zlecenia przybite gwoździami.",
          names=["Strażnica przy Brodzie", "Wieża {imie}a", "Posterunek Traktowy", "Stanica Graniczna"],
@@ -779,7 +790,8 @@ THROWABLES = {
 }
 
 
-def seed_all():
+def _prepared():
+    """Wszystkie rekordy treści startowej gotowe do zapisu: (tabela, rekord)."""
     for m in MONSTERS:
         m["moves"] = MOVES.get(m["id"], [])
         m["speed"] = SPEED.get(m["id"], 5)
@@ -788,22 +800,32 @@ def seed_all():
             eff = dict(i.get("effects") or {})
             eff["throw"] = THROWABLES[i["id"]]
             i["effects"] = eff
-    for t in TERRAINS:
-        upsert("terrains", t)
-    for p in POWER_KINDS:
-        upsert("power_kinds", p)
-    for i in ITEMS:
-        upsert("items", i)
-    for r in RECIPES:
-        upsert("recipes", r)
-    for m in MONSTERS:
-        upsert("monsters", m)
-    for e in EVENTS:
-        upsert("events", e)
-    for gth in GATHER:
-        upsert("gather_actions", gth)
-    for b in BUILDINGS:
-        upsert("building_types", b)
+    for table, rows in [("terrains", TERRAINS), ("power_kinds", POWER_KINDS), ("items", ITEMS),
+                        ("recipes", RECIPES), ("monsters", MONSTERS), ("events", EVENTS),
+                        ("gather_actions", GATHER), ("building_types", BUILDINGS)]:
+        for r in rows:
+            yield table, r
+
+
+def seed_missing():
+    """Po aktualizacji gry dodaje nowe elementy treści (np. nowy budynek), nie ruszając tych edytowanych w panelu."""
+    from .db import query
+    n = 0
+    existing = {}
+    for table, r in _prepared():
+        if table not in existing:
+            existing[table] = {x["id"] for x in query(f"SELECT id FROM {table}")}
+        if r["id"] not in existing[table]:
+            upsert(table, r, bump=False)
+            n += 1
+    return n
+
+
+def seed_all():
+    from .db import bump_content
+    for table, r in _prepared():
+        upsert(table, r, bump=False)
+    bump_content()
 
 
 START_INVENTORY = [("siekiera", 1), ("sierp", 1), ("krzesiwo", 1), ("mozdzierz", 1), ("fiolka", 4),

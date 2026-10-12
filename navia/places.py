@@ -94,6 +94,25 @@ def _contracts_for(pid):
     return out
 
 
+def market_stock(pid, action):
+    """Dzienny asortyment targowiska — każdego dnia inni kupcy, inne towary i ceny."""
+    c = content()
+    rng = random.Random(f"{config.WORLD_SEED}:targ:{pid}:{date.today().isoformat()}")
+    pool = sorted([i for i in c["items"].values()
+                   if (i.get("value") or 0) > 0 and i["category"] not in ("konstrukcja",)
+                   and (i["rarity"] != "legendarny" or rng.random() < 0.08)], key=lambda i: i["id"])
+    rng.shuffle(pool)
+    out = []
+    for it in pool[:int(action.get("count", 12))]:
+        price = max(2, int(round(it["value"] * rng.uniform(1.3, 2.2))))
+        out.append({"item": it["id"], "name": it["name"], "glyph": it["glyph"], "price": price,
+                    "description": it["description"], "rarity": it["rarity"],
+                    "trader": rng.choice(["Kramarz", "Przekupka", "Handlarz z Rusi", "Kupiec z Gdańska",
+                                          "Wędrowny handlarz", "Zielarz z gór", "Bursztyniarz", "Handlarz trofeami"])})
+    out.sort(key=lambda x: x["name"])
+    return out
+
+
 def view(ch, pid):
     p, bt = _building(ch, pid)
     c = content()
@@ -130,12 +149,19 @@ def view(ch, pid):
         for ct in ch["contracts"]:  # zlecenia z innych strażnic, gotowe do odebrania
             if ct.get("done") and not ct.get("claimed") and not any(x["id"] == ct["id"] for x in contracts):
                 contracts.append({**ct, "taken": True})
+    market = None
+    for a in bt.get("actions") or []:
+        if a["type"] == "market":
+            market = market_stock(pid, a)
+    from .trade import merchants_near
+    stalls = merchants_near(p["lat"], p["lng"], 250, viewer_id=ch["user_id"])
     actions = []
     for i, a in enumerate(bt.get("actions") or []):
         actions.append({"index": i, **a})
     return {"id": pid, "name": p.get("name") or bt["name"], "kind": bt["id"], "kind_name": bt["name"],
             "glyph": bt["glyph"], "description": bt["description"], "actions": actions, "shop": shop,
-            "teaches": teaches, "sellable": sellable, "sell_rate": sell_rate, "contracts": contracts}
+            "teaches": teaches, "sellable": sellable, "sell_rate": sell_rate, "contracts": contracts,
+            "market": market, "stalls": stalls}
 
 
 def rumors(ch, ctx):
@@ -169,7 +195,7 @@ def act(ch, ctx, pid, index, payload):
 
     def pay(cost):
         if ch["coins"] < cost:
-            raise GameError(f"Brakuje ci groszy ({ch['coins']}/{cost}).")
+            raise GameError(f"Brakuje ci pieniędzy (masz {chm.money(ch['coins'])}, potrzeba {chm.money(cost)}).")
         ch["coins"] -= cost
 
     if typ == "rest":
@@ -207,7 +233,15 @@ def act(ch, ctx, pid, index, payload):
             raise GameError("Tego tu nie sprzedają.")
         pay(entry["price"] * qty)
         chm.add_item(uid, item, qty)
-        res["text"] = f"Kupujesz: {c['items'][item]['name']} ×{qty}."
+        res["text"] = f"Kupujesz: {c['items'][item]['name']} ×{qty} za {chm.money(entry['price'] * qty)}."
+    elif typ == "market":
+        item, qty = payload.get("item"), max(1, int(payload.get("qty", 1)))
+        entry = next((s for s in market_stock(pid, a) if s["item"] == item), None)
+        if not entry:
+            raise GameError("Dziś nikt na targu tego nie ma.")
+        pay(entry["price"] * qty)
+        chm.add_item(uid, item, qty)
+        res["text"] = f"{entry['trader']} zawija ci w płótno: {c['items'][item]['name']} ×{qty}."
     elif typ == "sell":
         item, qty = payload.get("item"), max(1, int(payload.get("qty", 1)))
         it = c["items"].get(item)
@@ -216,7 +250,7 @@ def act(ch, ctx, pid, index, payload):
         chm.remove_item(uid, item, qty)
         price = max(1, int((it.get("value") or 0) * a.get("rate", 0.5))) * qty
         ch["coins"] += price
-        res["text"] = f"Sprzedajesz {it['name']} ×{qty} za {price} gr."
+        res["text"] = f"Sprzedajesz {it['name']} ×{qty} za {chm.money(price)}."
     elif typ == "learn":
         rid = payload.get("recipe")
         entry = next((t for t in bt.get("teaches") or [] if t["recipe"] == rid), None)
@@ -269,7 +303,7 @@ def act(ch, ctx, pid, index, payload):
                 raise GameError("Nie ma tu nic do odebrania.")
             ct["claimed"] = True
             ch["coins"] += ct["reward"]
-            res["text"] = f"Kapitan straży liczy grosze: {ct['reward']} gr. „Dobra robota, łowco.”"
+            res["text"] = f"Kapitan straży odlicza {chm.money(ct['reward'])}. „Dobra robota, łowco.”"
             res["messages"] += chm.gain_xp(ch, ct["xp"])
         ch["contracts"] = [x for x in ch["contracts"] if not x.get("claimed")][-10:] + \
                           [x for x in ch["contracts"] if x.get("claimed")][-5:]

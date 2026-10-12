@@ -216,6 +216,19 @@ CREATE TABLE IF NOT EXISTS structures(
   updated_at REAL
 );
 
+-- Kramy graczy: kupiec opłacany z kieszeni właściciela na określoną liczbę dni.
+CREATE TABLE IF NOT EXISTS merchants(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  owner_id INTEGER, owner_name TEXT, name TEXT,
+  lat REAL, lng REAL, created_at REAL, paid_until REAL,
+  till INTEGER DEFAULT 0, closed INTEGER DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS merchant_stock(
+  merchant_id INTEGER, item_id TEXT, qty INTEGER, price INTEGER,
+  PRIMARY KEY(merchant_id, item_id)
+);
+
 CREATE TABLE IF NOT EXISTS base_guests(
   owner_id INTEGER, guest_id INTEGER,
   PRIMARY KEY(owner_id, guest_id)

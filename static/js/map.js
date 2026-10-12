@@ -19,7 +19,7 @@ const MapView = {
     this.map = L.map('map', { zoomControl: false, attributionControl: true, minZoom: 12, maxZoom: 19 })
       .setView([lat, lng], 16);
     MapView.addTiles(this.map);
-    for (const k of ['zones', 'power', 'buildings', 'camps', 'bases', 'players']) {
+    for (const k of ['zones', 'power', 'buildings', 'camps', 'bases', 'merchants', 'players', 'trail']) {
       this.layers[k] = L.layerGroup().addTo(this.map);
     }
     this.me = L.marker([lat, lng], {
@@ -29,6 +29,7 @@ const MapView = {
     this.meRange = L.circle([lat, lng], { radius: 70, color: '#d7802f', weight: 1, opacity: .4, fillOpacity: .03, dashArray: '2 6', interactive: false }).addTo(this.map);
     this.map.on('dragstart', () => { this.follow = false; });
     this.map.on('click', e => Game.onMapClick(e.latlng));
+    this.map.on('zoomend', () => this.drawTrail());
   },
 
   /** Kafelki z konfiguracji serwera (CARTO z kluczem albo zapasowy OSM). */
@@ -44,6 +45,7 @@ const MapView = {
     this.me.setLatLng([lat, lng]);
     this.meRange.setLatLng([lat, lng]);
     if (this.follow) this.map.panTo([lat, lng], { animate: true, duration: .4 });
+    this.drawTrail();
   },
 
   center() { if (this.disabled) return; this.follow = true; this.map.setView(this.me.getLatLng(), Math.max(this.map.getZoom(), 16)); },
@@ -59,7 +61,7 @@ const MapView = {
   render(w) {
     if (this.disabled) return;
     const c = this.content;
-    Object.values(this.layers).forEach(l => l.clearLayers());
+    Object.entries(this.layers).forEach(([k, l]) => { if (k !== 'trail') l.clearLayers(); });
 
     for (const z of w.zones) {
       const t = c.terrains[z.kind] || { color: '#556644', name: z.kind };
@@ -111,5 +113,59 @@ const MapView = {
         icon: L.divIcon({ className: '', html: `<div class="other-marker"></div><span class="mk-label" style="top:16px">${esc(p.name)} · ${p.level}</span>`, iconSize: [14, 14], iconAnchor: [7, 7] }),
       }).addTo(this.layers.players);
     }
+
+    for (const m of w.merchants || []) {
+      const mk = L.marker([m.lat, m.lng], { icon: this.icon('🧺', 'merchant', 34, `${m.name}${m.own ? ' (twój)' : ''}`) })
+        .addTo(this.layers.merchants);
+      mk.on('click', () => Game.openMerchant(m.id));
+    }
+  },
+
+  // ---------------------------------------------------------------- tropy (strzałki do celu)
+  TRAIL_COLORS: { gather: '#8fae4c', explore: '#7ea4ad', hunt: '#c4402c', shop: '#c9a24a', market: '#c9a24a', stall: '#d7802f', search: '#a0804a' },
+
+  setTrail(leads) { this.trail = leads || null; this.drawTrail(); },
+
+  drawTrail() {
+    if (this.disabled || !this.layers.trail) return;
+    const layer = this.layers.trail;
+    layer.clearLayers();
+    if (!this.trail || !this.trail.length) return;
+    const me = this.me.getLatLng();
+    const pMe = this.map.latLngToLayerPoint(me);
+    this.trail.forEach((l, i) => {
+      const color = this.TRAIL_COLORS[l.type] || '#c9a24a';
+      const target = L.latLng(l.lat, l.lng);
+      const dist = distM(me.lat, me.lng, l.lat, l.lng);
+      const deg = bearingDeg(me.lat, me.lng, l.lat, l.lng);
+      const popup = `<h4>${esc(l.glyph || '')} ${esc(l.title)}</h4>
+        <div class="sc" style="color:${color}">${esc(l.itemName || '')}</div>
+        <p style="margin:.4em 0">${esc(l.detail)}</p>
+        <div class="muted">${dist < 30 ? 'Jesteś na miejscu.' : `${fmtDist(dist)} na ${directionName(deg)}`}${l.place ? ' · ' + esc(l.place) : ''}</div>
+        ${l.pct != null ? `<div class="muted">Szansa przy eksploracji tam: ~${l.pct}%</div>` : ''}
+        ${l.night ? '<div class="muted">☾ Częściej nocą.</div>' : ''}${l.day_only ? '<div class="muted">☀ Tylko za dnia.</div>' : ''}
+        <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">
+          <button class="btn small" onclick="Game.focusLead(${i})">Pokaż cel</button>
+          <button class="btn small ghost" onclick="Game.clearTrail()">Zakończ trop</button></div>`;
+      if (dist > 25) {
+        L.polyline([me, target], { color, weight: 2, opacity: .55, dashArray: '3 9', interactive: false }).addTo(layer);
+        const pT = this.map.latLngToLayerPoint(target);
+        const ang = Math.atan2(pT.y - pMe.y, pT.x - pMe.x);
+        const pixDist = Math.hypot(pT.x - pMe.x, pT.y - pMe.y);
+        const r = Math.min(pixDist * 0.85, 58 + (i % 3) * 20);
+        const pos = this.map.layerPointToLatLng(L.point(pMe.x + Math.cos(ang) * r, pMe.y + Math.sin(ang) * r));
+        L.marker(pos, {
+          zIndexOffset: 900,
+          icon: L.divIcon({
+            className: '', iconSize: [40, 40], iconAnchor: [20, 20],
+            html: `<div class="trail-arrow" style="--tc:${color};transform:rotate(${ang}rad)"><svg viewBox="0 0 40 40"><path d="M6 13 L24 13 L24 6 L37 20 L24 34 L24 27 L6 27 Z"/></svg></div>`,
+          }),
+        }).bindPopup(popup).addTo(layer);
+      }
+      L.marker(target, {
+        icon: L.divIcon({ className: '', iconSize: [26, 26], iconAnchor: [13, 13],
+          html: `<div class="trail-target" style="--tc:${color}"><i class="glyph">${esc(l.glyph || '◆')}</i></div>` }),
+      }).bindPopup(popup).addTo(layer);
+    });
   },
 };

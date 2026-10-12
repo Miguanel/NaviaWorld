@@ -43,10 +43,24 @@ HOME_MOVE_COOLDOWN_H = 0 if DEBUG_MOVEMENT else 24 * 7
 
 EXPLORE_COOLDOWN_S = 2 if DEBUG_MOVEMENT else 8
 
-# Energia eksploracji: osobny zasób, odnawia się co godzinę.
+# Energia eksploracji: osobny zasób, odnawia się co godzinę i za chodzenie.
 ENERGY_MAX = 100
 ENERGY_PER_HOUR = 10
 ENERGY_START = 50
+ENERGY_PER_METER = float(os.environ.get("NAVIA_ENERGY_PER_M", "1"))  # +1 energii za każdy przebyty metr
+WALK_MIN_STEP_M = 4        # mniejsze przesunięcia to drgania GPS — nie liczą się
+WALK_MAX_SPEED_MS = 8      # szybciej niż ~29 km/h = jazda (rower, auto) — bez energii
+WALK_MAX_STEP_M = 200      # jednorazowo najwyżej tyle metrów (skoki GPS, teleport)
+
+# Waluta: 1 dobrota = 100 groszy. W bazie trzymamy wszystko w groszach.
+CURRENCY = ("dobrota", "dobroty", "dobrot")
+GROSZE_PER_DOBROTA = 100
+
+# Kramy graczy (kupcy opłacani z własnej kieszeni)
+MERCHANT_DAY_COST = 50     # groszy za dzień działania kramu
+MERCHANT_MAX_DAYS = 14
+MERCHANTS_PER_PLAYER = 1
+MERCHANT_MAX_STOCK = 20    # różnych towarów na jednym kramie
 
 # Tryby eksploracji. cost = ile energii zużywa jedna eksploracja.
 #   monster  – mnożnik szansy na potwora

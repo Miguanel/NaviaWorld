@@ -34,7 +34,7 @@ CONTENT_TABLES = ["items", "recipes", "monsters", "events", "gather_actions",
                   "terrains", "power_kinds", "building_types"]
 # Tabele z danymi graczy (pełna kopia zapasowa).
 PLAYER_TABLES = ["users", "characters", "inventory", "known_recipes", "journal",
-                 "camps", "structures", "base_guests"]
+                 "camps", "structures", "base_guests", "merchants", "merchant_stock"]
 
 IS_PG = bool(config.DATABASE_URL)
 BACKEND = "postgres" if IS_PG else "sqlite"
@@ -48,8 +48,9 @@ _lock = threading.Lock()
 PRIMARY_KEYS = {
     "characters": "user_id", "inventory": "user_id,item_id", "known_recipes": "user_id,recipe_id",
     "base_guests": "owner_id,guest_id", "osm_cells": "cell", "sessions": "token",
+    "merchant_stock": "merchant_id,item_id",
 }
-SERIAL_TABLES = {"users", "journal", "places", "camps", "structures"}
+SERIAL_TABLES = {"users", "journal", "places", "camps", "structures", "merchants"}
 
 _RE_OR_IGNORE = re.compile(r"^\s*INSERT\s+OR\s+IGNORE\s+INTO", re.I)
 _RE_OR_REPLACE = re.compile(r"^\s*INSERT\s+OR\s+REPLACE\s+INTO\s+(\w+)\s*\(([^)]*)\)", re.I)
@@ -317,6 +318,11 @@ def init_db(app):
             from .seed import seed_all
             seed_all()
             print("[navia] Zasiano treść gry (przedmioty, receptury, potwory, zdarzenia).")
+        else:
+            from .seed import seed_missing
+            n = seed_missing()
+            if n:
+                print(f"[navia] Dodano {n} nowych elementów treści z aktualizacji gry.")
         bump_content()
         ensure_admin()
         print(f"[navia] Baza danych: {BACKEND}")

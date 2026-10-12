@@ -176,7 +176,7 @@ const Combat = {
     m.innerHTML = '';
     const lines = [];
     if (s.xp) lines.push(`+${s.xp} doświadczenia`);
-    if (s.coins) lines.push(`${s.coins > 0 ? '+' : ''}${s.coins} groszy`);
+    if (s.coins) lines.push(`${s.coins > 0 ? '+' : ''}${money(s.coins)}`);
     m.append(
       h('h3', { style: { fontSize: '26px', color: s.result === 'win' ? 'var(--gold)' : s.result === 'lose' ? '#e0745f' : 'var(--bone)' } }, titles[s.result] || ''),
       h('ul', { class: 'loot-list' }, [...lines, ...(s.loot || []), ...(s.messages || [])].map(x => h('li', {}, x))),

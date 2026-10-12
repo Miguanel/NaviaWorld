@@ -102,3 +102,32 @@ const CAT_NAMES = {
   narzedzie: 'Narzędzia', konstrukcja: 'Konstrukcje', eliksir: 'Eliksiry', olej: 'Oleje', wywar: 'Przemiany',
   katalizator: 'Katalizatory', bron: 'Broń', pancerz: 'Pancerze', jedzenie: 'Jadło', artefakt: 'Artefakty', inne: 'Inne',
 };
+
+/* Waluta: 1 dobrota = 100 groszy */
+function plural(n, one, few, many) {
+  n = Math.abs(Math.trunc(n));
+  if (n === 1) return one;
+  if (n % 10 >= 2 && n % 10 <= 4 && !(n % 100 >= 12 && n % 100 <= 14)) return few;
+  return many;
+}
+function money(g, short = false) {
+  g = Math.round(g || 0);
+  const sign = g < 0 ? '−' : '';
+  const a = Math.abs(g), d = Math.floor(a / 100), r = a % 100;
+  const parts = [];
+  if (d) parts.push(short ? `${d} db` : `${d} ${plural(d, 'dobrota', 'dobroty', 'dobrot')}`);
+  if (r || !d) parts.push(`${r} gr`);
+  return sign + parts.join(' ');
+}
+
+/* Kierunek świata z punktu A do B */
+function bearingDeg(lat1, lng1, lat2, lng2) {
+  const toR = x => x * Math.PI / 180;
+  const y = Math.sin(toR(lng2 - lng1)) * Math.cos(toR(lat2));
+  const x = Math.cos(toR(lat1)) * Math.sin(toR(lat2)) - Math.sin(toR(lat1)) * Math.cos(toR(lat2)) * Math.cos(toR(lng2 - lng1));
+  return (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
+}
+function directionName(deg) {
+  return ['północ', 'północny wschód', 'wschód', 'południowy wschód', 'południe', 'południowy zachód', 'zachód', 'północny zachód'][Math.round(deg / 45) % 8];
+}
+function fmtDist(m) { return m >= 1000 ? (m / 1000).toFixed(1).replace('.', ',') + ' km' : Math.round(m) + ' m'; }

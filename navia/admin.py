@@ -21,7 +21,7 @@ FIELDS = {
     "items": [
         ("id", "key", "Identyfikator"), ("name", "text", "Nazwa"), ("glyph", "glyph", "Ikona (emoji)"),
         ("category", "select:categories", "Kategoria"), ("rarity", "select:rarities", "Rzadkość"),
-        ("description", "textarea", "Opis słowny"), ("value", "number", "Wartość (grosze)"),
+        ("description", "textarea", "Opis słowny"), ("value", "number", "Wartość (grosze; 100 gr = 1 dobrota)"),
         ("usable", "bool", "Można użyć / wypić"), ("effects", "effects", "Efekty"),
         ("is_tool", "bool", "Jest narzędziem"), ("tool_bonus", "number", "Premia narzędzia do szansy (%)"),
         ("catalyst_bonus", "number", "Katalizator uniwersalny (+% do każdej receptury)"),

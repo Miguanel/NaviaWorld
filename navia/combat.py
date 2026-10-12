@@ -269,7 +269,7 @@ def _finish(ch, cb, out):
                 summary["messages"].append(f"Zlecenie wykonane: {ct['title']}. Odbierz nagrodę w strażnicy.")
                 break
         _log(cb, "sys", f"{cb['name']} pada martwy. Zwycięstwo!", out)
-        chm.journal(uid, "combat", f"Pokonałeś: {cb['name']}. +{xp} PD, +{coins} gr. {', '.join(summary['loot'])}")
+        chm.journal(uid, "combat", f"Pokonałeś: {cb['name']}. +{xp} PD, +{chm.money(coins)}. {', '.join(summary['loot'])}")
     elif cb["result"] == "lose":
         lost = int(ch["coins"] * 0.15)
         ch["coins"] -= lost
@@ -278,7 +278,7 @@ def _finish(ch, cb, out):
         summary["coins"] = -lost
         summary["messages"].append("Ciemność. Budzisz się w rowie, obdarty z części groszy. Ktoś cię opatrzył — nie wiesz kto.")
         _log(cb, "sys", "Padasz na ziemię…", out)
-        chm.journal(uid, "combat", f"Pokonany przez: {cb['name']}. Straciłeś {lost} gr.")
+        chm.journal(uid, "combat", f"Pokonany przez: {cb['name']}. Straciłeś {chm.money(lost)}.")
     else:
         chm.journal(uid, "combat", f"Uciekłeś przed: {cb['name']}.")
     cb["summary"] = summary

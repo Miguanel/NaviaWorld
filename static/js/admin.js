@@ -511,16 +511,16 @@ const Admin = {
     const itemSel = h('select', { style: { maxWidth: '260px' } }, this.opt('items').map(i => h('option', { value: i.id }, `${i.glyph} ${i.name}`)));
     const qty = h('input', { type: 'number', value: 5, style: { width: '80px' } });
     main.append(h('div', { class: 'row wrap', style: { marginBottom: '12px' } }, h('span', { class: 'muted' }, 'Przedmiot do dania:'), itemSel, qty));
-    const tbl = h('table', { class: 't' }, h('tr', {}, ['Łowca', 'Poziom', 'Grosze', 'Energia', 'Ostatnio', 'Akcje'].map(x => h('th', {}, x))));
+    const tbl = h('table', { class: 't' }, h('tr', {}, ['Łowca', 'Poziom', 'Sakiewka', 'Energia', 'Ostatnio', 'Akcje'].map(x => h('th', {}, x))));
     const act = async (id, body) => { try { await API.post('/admin/users/' + id, body); toast('Gotowe.', 'good'); this.renderUsers(); } catch (e) { toast(e.message, 'err'); } };
     for (const u of users) {
       tbl.append(h('tr', {},
         h('td', {}, u.username, u.is_admin ? h('span', { class: 'chip', style: { marginLeft: '6px' } }, 'admin') : null),
-        h('td', {}, u.level ?? '—'), h('td', {}, u.coins ?? '—'), h('td', {}, u.energy != null ? Math.floor(u.energy) : '—'),
+        h('td', {}, u.level ?? '—'), h('td', {}, u.coins != null ? money(u.coins) : '—'), h('td', {}, u.energy != null ? Math.floor(u.energy) : '—'),
         h('td', { class: 'muted' }, u.last_seen ? fmtDate(u.last_seen) : '—'),
         h('td', {}, h('div', { class: 'row wrap', style: { gap: '4px' } },
           h('button', { class: 'btn small', onclick: () => act(u.id, { give: { item: itemSel.value, qty: +qty.value || 1 } }) }, 'Daj przedmiot'),
-          h('button', { class: 'btn small', onclick: () => act(u.id, { coins: 100 }) }, '+100 gr'),
+          h('button', { class: 'btn small', onclick: () => act(u.id, { coins: 100 }) }, '+1 dobrota'),
           h('button', { class: 'btn small', onclick: () => act(u.id, { energy: 50 }) }, '+50 energii'),
           h('button', { class: 'btn small', onclick: () => act(u.id, { heal: true }) }, 'Ulecz'),
           h('button', { class: 'btn small', onclick: () => act(u.id, { teach_all: true }) }, 'Wszystkie receptury'),
