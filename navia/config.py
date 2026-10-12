@@ -19,6 +19,8 @@ DB_PATH = os.environ.get("NAVIA_DB", os.path.join(BASE_DIR, "instance", "navia.d
 
 # Na Render (albo innym hostingu) ustaw DATABASE_URL — wtedy gra używa PostgreSQL zamiast pliku SQLite.
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
+# Gra trzyma swoje tabele w osobnym schemacie, więc może dzielić bazę z innym projektem.
+DB_SCHEMA = os.environ.get("NAVIA_DB_SCHEMA", "navia")
 
 # Tryb debug: strzałki do zmiany pozycji, teleport kliknięciem, brak limitu prędkości.
 DEBUG_MOVEMENT = os.environ.get("NAVIA_DEBUG", "1") == "1"

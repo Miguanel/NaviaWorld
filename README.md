@@ -50,7 +50,7 @@ Limity CARTO: użytek niekomercyjny do 5 mln kafelków miesięcznie, komercyjny 
 
 ## Wdrożenie na Render (gra w internecie)
 
-Projekt zawiera gotowy plik **`render.yaml`**: serwis WWW z grą i API oraz darmową bazę PostgreSQL w regionie Frankfurt.
+Projekt zawiera gotowy plik **`render.yaml`**: serwis WWW z grą i API, podłączany do Twojej bazy PostgreSQL na Render.
 
 ### 1. Wrzuć projekt na GitHuba
 W PyCharm: **VCS → Share Project on GitHub** albo w terminalu:
@@ -64,13 +64,20 @@ git push -u origin main
 ```
 Plik `.gitignore` pomija `venv/` i lokalną bazę `instance/`, więc na GitHuba nie trafią hasła graczy z Twojego komputera.
 
-### 2. Utwórz usługi z Blueprintu
-1. Na https://dashboard.render.com wybierz **New → Blueprint** i wskaż repozytorium.
-2. Render przeczyta `render.yaml` i zapyta o dwie wartości:
+### 2. Baza danych
+Na darmowym planie Render pozwala mieć **jedną** bazę PostgreSQL, więc gra korzysta z bazy, którą już masz. Swoje tabele trzyma w osobnym schemacie `navia`, dlatego nie rusza danych innych projektów w tej samej bazie.
+1. W Render otwórz swoją bazę → **Connect** i skopiuj **Internal Database URL**.
+2. Sprawdź **region** bazy, np. Frankfurt albo Oregon. Serwis gry powinien stać w tym samym regionie. Jeśli to nie Frankfurt, zmień linijkę `region:` w `render.yaml`.
+   Możesz też użyć **External Database URL**. Działa z każdego regionu, ale gra będzie wolniejsza.
+
+### 3. Utwórz serwis z Blueprintu
+1. Na https://dashboard.render.com wybierz **New → Blueprint** albo w istniejącym Blueprincie kliknij **Manual sync**.
+2. Render zapyta o wartości:
+   - **DATABASE_URL** — adres bazy z punktu 2.
    - **NAVIA_ADMIN_PASS** — hasło konta admina `migu` na serwerze. Daj inne niż lokalnie.
-   - **NAVIA_MAP_KEY** — klucz CARTO. Możesz najpierw zostawić puste i dodać go później w *Environment*.
-3. Kliknij **Apply**. Po kilku minutach gra działa pod adresem `https://cienie-navii.onrender.com`. Dokładny adres zobaczysz w panelu.
-4. Teraz wygeneruj na CARTO klucz produkcyjny ograniczony do tego adresu i wklej go w **Environment → NAVIA_MAP_KEY**.
+   - **NAVIA_MAP_KEY** — klucz CARTO. Możesz zostawić puste i dodać później w *Environment*.
+3. Kliknij **Apply**. Po kilku minutach gra działa pod adresem `https://cienie-navii.onrender.com`, a w logach pojawi się `[navia] Baza danych: postgres`.
+4. Wygeneruj na CARTO klucz produkcyjny ograniczony do tego adresu i wklej go w **Environment → NAVIA_MAP_KEY**.
 
 Każdy `git push` na gałąź `main` automatycznie wdraża nową wersję.
 
@@ -82,7 +89,7 @@ Każdy `git push` na gałąź `main` automatycznie wdraża nową wersję.
 
 ### Baza danych na Render — ważne
 - Darmowa baza PostgreSQL ma 1 GB, czyli dużo jak na tę grę. **Wygasa jednak 30 dni po utworzeniu.** Potem jest jeszcze 14 dni na przejście na płatny plan, a po tym czasie Render ją usuwa.
-- Zanim minie 30 dni, wejdź w **Panel admina → Eksport / import → „Pełna kopia (z graczami)”**. Następnie utwórz nową darmową bazę, podłącz ją w zmiennej `DATABASE_URL` i zaimportuj plik. Konta, postacie, ekwipunek i siedliska wrócą na swoje miejsca.
+- Zanim minie 30 dni, wejdź w **Panel admina → Eksport / import → „Pełna kopia (z graczami)”**. Następnie utwórz nową darmową bazę (starą usuń, bo limit to jedna), wklej jej adres w zmiennej `DATABASE_URL` serwisu i zaimportuj plik. Konta, postacie, ekwipunek i siedliska wrócą na swoje miejsca.
 - Druga droga to płatny plan bazy, który nie wygasa.
 - Darmowa baza nie ma automatycznych kopii zapasowych, dlatego pełną kopię warto pobierać regularnie.
 

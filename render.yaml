@@ -1,10 +1,13 @@
-# Blueprint Render: serwis WWW (gra + API) i darmowa baza PostgreSQL.
+# Blueprint Render: serwis WWW z grą i API.
+# Baza: używamy ISTNIEJĄCEJ bazy PostgreSQL z Twojego konta (darmowy plan pozwala na jedną).
+# Gra zakłada w niej własny schemat "navia", więc nie miesza się z tabelami innych projektów.
 # Render → New → Blueprint → wybierz repozytorium z grą.
 services:
   - type: web
     name: cienie-navii
     runtime: python
     plan: free
+    # Ustaw ten sam region, w którym jest Twoja baza (oregon / ohio / virginia / frankfurt / singapore)
     region: frankfurt
     buildCommand: pip install -r requirements.txt
     # 1 proces (ważne: wspólna pamięć podręczna treści), kilka wątków na równoległych graczy
@@ -13,10 +16,10 @@ services:
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.9
-      - key: DATABASE_URL
-        fromDatabase:
-          name: cienie-navii-db
-          property: connectionString
+      - key: DATABASE_URL         # wklej adres bazy: Internal Database URL (ten sam region) albo External
+        sync: false
+      - key: NAVIA_DB_SCHEMA
+        value: navia
       - key: NAVIA_DEBUG          # 0 = prawdziwy GPS; strzałki i teleport ma tylko admin
         value: "0"
       - key: NAVIA_OSM            # prawdziwe kościoły, cmentarze, lasy z OpenStreetMap
@@ -27,10 +30,3 @@ services:
         sync: false
       - key: NAVIA_MAP_KEY        # klucz CARTO ograniczony do adresu gry na onrender.com
         sync: false
-
-databases:
-  - name: cienie-navii-db
-    plan: free
-    region: frankfurt
-    databaseName: navia
-    user: navia

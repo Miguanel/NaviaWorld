@@ -114,7 +114,12 @@ class PgConn:
     @staticmethod
     def _open():
         import psycopg
-        return psycopg.connect(config.DATABASE_URL, autocommit=True, connect_timeout=15)
+        conn = psycopg.connect(config.DATABASE_URL, autocommit=True, connect_timeout=15)
+        # własny schemat = tabele gry nie mieszają się z innymi projektami w tej samej bazie
+        schema = re.sub(r"[^a-z0-9_]", "", config.DB_SCHEMA.lower()) or "navia"
+        conn.execute(f"CREATE SCHEMA IF NOT EXISTS {schema}")
+        conn.execute(f"SET search_path TO {schema}")
+        return conn
 
     @property
     def healthy(self):
@@ -245,7 +250,7 @@ def execute(sql, args=()):
 def table_columns(table):
     if IS_PG:
         rows = get_db().execute("SELECT column_name AS name FROM information_schema.columns "
-                                "WHERE table_name=? ORDER BY ordinal_position", (table,)).fetchall()
+                                "WHERE table_name=? AND table_schema=current_schema() ORDER BY ordinal_position", (table,)).fetchall()
     else:
         rows = get_db().execute(f"PRAGMA table_info({table})").fetchall()
     return [r["name"] for r in rows]
