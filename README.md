@@ -1,0 +1,141 @@
+# Cienie Navii
+
+To webowa gra MMORPG oparta na GPS, w mrocznym klimacie dawnej Słowiańszczyzny. Chodzisz po prawdziwej mapie, a teren pod stopami (las, bagno, rzeka, góry), cmentarze, kapliczki i rozstaje zmieniają to, co możesz spotkać. Polujesz na strzygi i utopce, warzysz eliksiry, przechodzisz przemiany, rozbijasz obozy i budujesz własne siedlisko.
+
+Grafiki nie ma celowo. Gra stoi na tekście i wyobraźni: przedmioty, potwory i zdarzenia mają słowne opisy, a ikony to stonowane emoji.
+
+> Tytuł jest roboczy. Zmienisz go w `navia/config.py` (`GAME_NAME`) albo przez zmienną środowiskową `NAVIA_NAME`.
+
+---
+
+## Uruchomienie (Windows / PyCharm)
+
+1. Otwórz folder `NaviaWorlds` w PyCharm. Projekt ma już środowisko `venv`.
+2. W terminalu PyCharm zainstaluj zależność:
+   ```
+   pip install -r requirements.txt
+   ```
+3. Uruchom grę. Masz dwie drogi:
+   - w PyCharm kliknij prawym przyciskiem plik `app.py` i wybierz **Run 'app'** (następnym razem wystarczy ▶ u góry);
+   - albo w terminalu wpisz `python app.py`.
+4. Otwórz **http://localhost:5000**. Konto admina tworzy się samo przy starcie: login **migu**, hasło **adminmigu** (zmienisz je w `navia/config.py` → `ADMIN_USERNAME` / `ADMIN_PASSWORD`; zmień przed publikacją gry w internecie).
+5. Panel admina: **http://localhost:5000/admin**. W grze prowadzi do niego też przycisk ⚙.
+
+Baza danych tworzy się sama w `instance/navia.db` i od razu dostaje całą treść startową: 103 przedmioty, 40 receptur, 16 potworów, 40 zdarzeń, 16 akcji zbieractwa, 9 rodzajów budynków, 9 rodzajów punktów mocy i 8 terenów.
+Jeśli chcesz zacząć od zera, usuń plik `instance/navia.db`.
+
+Testy uruchomisz poleceniem `python tests/test_flow.py`. Używają osobnej, tymczasowej bazy.
+
+## Klucz do mapy (CARTO)
+
+Od września 2026 kafelki CARTO wymagają **darmowego klucza** — bez niego na mapie widać napis „API KEY REQUIRED”.
+
+1. Wejdź na https://carto.com/basemaps/apikey/ i wypełnij formularz „Request a key” (nie trzeba zakładać konta).
+2. Wklej klucz w `navia/config.py` → `MAP_API_KEY = "twój-klucz"` albo ustaw zmienną środowiskową `NAVIA_MAP_KEY`.
+3. Uruchom serwer ponownie i odśwież stronę (Ctrl+F5).
+
+Bez klucza gra sama przełącza się na zwykłą mapę OpenStreetMap przyciemnioną filtrem — do testów wystarczy.
+Limity CARTO: użytek niekomercyjny do 5 mln kafelków miesięcznie, komercyjny do 1 mln za darmo.
+
+## Gra na telefonie
+
+- Telefon i komputer muszą być w tej samej sieci Wi-Fi. Na telefonie wejdź na `http://<IP-komputera>:5000`. IP sprawdzisz w Windows poleceniem `ipconfig`.
+- **GPS w przeglądarce działa tylko przez HTTPS** (oraz na `localhost`). Masz dwie możliwości:
+  - `pip install pyopenssl`, potem `python app.py --https`. Przeglądarka ostrzeże o certyfikacie, wtedy wybierz „Zaawansowane → Przejdź”;
+  - albo tunel, np. `cloudflared tunnel --url http://localhost:5000` lub `ngrok http 5000`. Dostajesz prawdziwy adres https.
+- **Instalacja jako aplikacja (PWA):** w Chrome na Androidzie otwórz menu ⋮ i wybierz „Zainstaluj aplikację”. Na iPhonie w Safari: Udostępnij → „Do ekranu początkowego”. Gra ma ikonę, ekran startowy i działa w trybie pełnoekranowym.
+
+## Tryb debug: strzałki zamiast chodzenia
+
+W `navia/config.py` ustawienie `DEBUG_MOVEMENT = True` (domyślne) daje:
+- **strzałki** w lewym dolnym rogu. Środkowy przycisk zmienia krok: 10 / 25 / 100 / 400 m. Na komputerze działają też strzałki klawiatury;
+- przycisk **✥ teleport**: po jego włączeniu kliknięcie mapy przenosi postać;
+- przycisk **⌖ GPS**, który włącza i wyłącza prawdziwą lokalizację;
+- krótszy czas odnowienia eksploracji i brak blokady „za szybkiego” ruchu.
+
+Na produkcji ustaw `NAVIA_DEBUG=0`.
+
+---
+
+## Jak działa gra
+
+### Świat
+- **Generator świata** stawia wokół gracza obszary terenu, punkty mocy i budynki. Jest deterministyczny (ziarno `WORLD_SEED`), więc wszyscy gracze widzą ten sam świat.
+- **OpenStreetMap:** prawdziwe kościoły, cmentarze, kapliczki przydrożne, źródła, ruiny, lasy, jeziora i mokradła stają się punktami mocy i terenami. Przy okazji puby zamieniają się w karczmy, apteki w chaty zielarek, a biblioteki w biblioteki. Dane pobierają się w tle i zostają zapisane w bazie. Bez internetu gra działa na samym generatorze.
+- **Punkty mocy** (świątynia, cmentarz, rozstaje, kurhan, święty gaj, źródło, szubienica, pobojowisko, kamienny krąg) działają w okręgu. **Im bliżej środka, tym silniejszy wpływ:** zmieniają cechy gracza i szanse na konkretne zdarzenia. Na mapie pokazują to trzy pierścienie.
+- **Budynki:** karczma, klasztor, kuźnia, cmentarz, biblioteka, ruiny, a do tego trzy nowe: **chata zielarki**, **gontyna** (chram starych bogów) i **strażnica** (tablica zleceń). Każdy ma własne akcje: sklep, skup, naukę receptur, nocleg, oczyszczenie z toksyn, ofiary dające błogosławieństwa, przeszukiwanie z ryzykiem walki, plotki, bestiariusz i zlecenia.
+
+### Eksploracja i energia
+- Energia eksploracji to osobny pasek. **+10 pkt co godzinę**, maksymalnie 100.
+- Tryby eksploracji:
+
+  | Tryb | Koszt | Potwory | Siła potworów | Łupy | Rzadkie zdarzenia |
+  |---|---|---|---|---|---|
+  | Łatwy | 1 | ×0,5 | ×0,8 | ×0,8 | ×0,5 |
+  | Normalny | 2 | ×1 | ×1 | ×1 | ×1 |
+  | Trudny | 3 | ×1,6 | ×1,35 | ×1,5 | ×1,6 |
+  | Specjalny | 5 | ×1,2 | ×1,2 | ×2 | ×4 |
+
+  Wszystkie wartości zmienisz w `navia/config.py` → `EXPLORE_MODES`.
+- **Wzór losowania:** `waga = waga bazowa × mnożnik terenu × mnożniki punktów mocy (zależne od odległości) × pora dnia × tryb`. Gra zamienia wagi na procenty. W grze zobaczysz je pod „Szepty okolicy”, a w panelu admina w **Symulatorze szans**.
+- Zdarzenia z puli mają trzy rodzaje: **potwór**, **znalezisko** albo **zdarzenie fabularne**. Fabularne mogą mieć rozgałęzienia, na przykład dobre zakończenie, złe zakończenie albo potwora na końcu.
+
+### Walka (turowa, jak w Pokémonach)
+W każdej turze wybierasz jedną z czterech opcji:
+- **Atak:** cięcie, szybkie pchnięcie (zawsze pierwsze), potężny cios, finta (osłabia obronę wroga);
+- **Czary:** Żar Swaroga, Tchnienie Strzyboga, Tarcza Peruna, Pęta Welesa, Szept Mokoszy. Zużywają wigor;
+- **Torba:** eliksiry, jedzenie, oleje na ostrze (premia przeciw rodzinie potworów) i rzuty, np. święta woda na upiory;
+- **Ucieczka.**
+
+Kolejność w turze zależy od Zręczności i szybkości potwora. Potwory mają własne ataki z efektami: krwawienie, trucizna, ogłuszenie, wysysanie, osłabienie. Działają też słabości: olej, srebro, ogień, światło.
+
+### Crafting
+- Przeciągnij w Torbie **przedmiot na przedmiot**. Pojawi się dymek z pasującymi recepturami i szansą powodzenia. Na telefonie przytrzymaj przedmiot i przeciągnij, albo wybierz „Połącz z…”.
+- Przy narzędziu przycisk „Użyj narzędzia” pokazuje receptury, które go wymagają.
+- **Szansa** = baza + Alchemia × premia receptury + premie narzędzi + **katalizatory**. Katalizatory to dodatkowe substancje (miód, siarka, jemioła, kwiat paproci…) albo pomocnicze konstrukcje, np. stół zielarza czy ołtarzyk Welesa.
+- Narzędzia mogą być **w torbie**, **postawione w obozie lub siedlisku** albo dostępne w **budynku-warsztacie**: kuźnia ma kowadło i palenisko, zielarka ma stół, klasztor ma alembik.
+- Receptura może wymagać konkretnego miejsca: wszędzie, obóz, siedlisko, wybrany budynek albo wybrany punkt mocy.
+
+### Mutacje
+Wywary przemiany zmieniają cechy **na zawsze**. Dodają toksyczność i niosą ryzyko porażki, które rośnie, gdy przekroczysz limit toksyn. Liczba przemian zależy od poziomu postaci.
+
+### Obóz i siedlisko
+- **Obóz** budujesz z 4 drewna; potrzebne jest też krzesiwo w torbie. Widzą go wszyscy, podpisany Twoim imieniem. Po 24 h wygasa i na mapie stopniowo blednie. Drewno dorzucone do ogniska wydłuża mu życie.
+- **Siedlisko** (baza) jest prywatne i widzisz je tylko Ty oraz zaproszeni gracze. Stawiasz w nim konstrukcje: kocioł, stół zielarza, suszarnię, ołtarzyk, palenisko, kowadło. Każda ma wytrzymałość, która spada co godzinę, a naprawa wymaga składników.
+
+---
+
+## Panel admina (`/admin`)
+- **Przedmioty**: opis słowny, ikona, kategoria, efekty (wstawiane z gotowych wzorów: leczenie, efekt czasowy, mutacja, olej, rzut, broń, pancerz), narzędzia, katalizatory i konstrukcje.
+- **Receptury**: konfigurator łączenia przedmiotów. Składniki z ilościami, narzędzia, miejsce, suwak szansy bazowej, katalizatory z premią, przedmiot przy porażce i podgląd szans na żywo.
+- **Pula zdarzeń**: nowe akcje eksploracji z wagą, mnożnikami dla każdego terenu i punktu mocy, porą dnia, poziomami i skutkami.
+- **Potwory**: statystyki, ataki z efektami, słabości i łup.
+- **Zbieractwo**, **Tereny**, **Punkty mocy**, **Budynki**: akcje, sklep, nauka receptur, łup z przeszukiwania.
+- **Symulator szans**: suwaki terenu i odległości od punktów mocy, a obok procent dla każdego zdarzenia.
+- **Mapa miejsc**: kliknij mapę, żeby postawić własny punkt mocy, obszar albo budynek.
+- **Gracze**: dawanie przedmiotów, groszy i energii, leczenie, nauka wszystkich receptur, nadawanie uprawnień admina.
+- **Eksport / import** całej treści do pliku JSON. Przydaje się na kopie zapasowe.
+
+## Struktura projektu
+```
+app.py                 – uruchomienie serwera
+navia/config.py        – ustawienia (nazwa gry, energia, tryby, debug, OSM)
+navia/schema.sql       – schemat bazy SQLite
+navia/seed.py          – treść startowa (przedmioty, receptury, potwory, zdarzenia…)
+navia/world.py         – generator świata, punkty mocy, OpenStreetMap
+navia/explore.py       – losowanie zdarzeń
+navia/combat.py        – walka turowa
+navia/crafting.py      – receptury, narzędzia, katalizatory
+navia/camp.py          – obozy, siedlisko, konstrukcje
+navia/places.py        – budynki i zbieractwo
+navia/character.py     – postać, cechy, ekwipunek, mutacje
+navia/api.py, admin.py – REST API gry i panelu
+static/                – interfejs (HTML/CSS/JS), PWA, ikony
+tests/test_flow.py     – testy całej pętli gry
+```
+
+## Prawa autorskie
+Teksty w grze są oryginalne. Klimat wziął się z mitologii i demonologii słowiańskiej (strzygi, utopce, południce, leszy, bogowie: Perun, Weles, Mokosz, Swaróg), a wierzenia ludowe są dobrem wspólnym. W grze nie ma cytatów z powieści, nazw własnych ani znaków towarowych cudzych serii, więc cała treść należy do Ciebie i bezpiecznie ją zastrzeżesz.
+Mapa korzysta z danych © OpenStreetMap i kafelków © CARTO. Przy publikacji gry zostaw te podpisy, bo wymagają tego licencje.
+#   N a v i a W o r l d  
+ 
