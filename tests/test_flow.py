@@ -379,6 +379,60 @@ def test_camp_octopus_and_move():
     assert abs(r.json["state"]["char"]["home"][0] - (lat0 + 0.02)) < 1e-9
 
 
+
+def test_combat_cooldowns_stats_auto():
+    c, h, uid = client("Automat")
+    give(uid, "chleb", 3); give(uid, "olej_bestii", 1)
+    set_combat(uid, "wilk", strength=4)
+    vig0 = c.get("/api/state", headers=h).json["state"]["char"]["vigor"]
+    view = c.get("/api/state", headers=h).json["state"]["combat"]
+    a = {x["id"]: x for x in view["attacks"]}
+    assert a["ciecie"]["dmg"][0] >= 1 and 25 <= a["ciecie"]["hit"] <= 99 and "crit" in a["ciecie"]
+    assert view["me"]["flee"] and view["foe"]["moves"] and any(sp.get("effect") for sp in view["spells"])
+    r = c.post("/api/combat", json={"action": "spell", "arg": "zar"}, headers=h)
+    assert r.status_code == 200, r.json
+    st = r.json["state"]
+    assert st["char"]["vigor"] >= vig0 - 0.5  # czary nie zużywają wigoru
+    if st["combat"]:
+        zar = next(x for x in st["combat"]["spells"] if x["id"] == "zar")
+        assert zar["cd_left"] == 3
+        r = c.post("/api/combat", json={"action": "spell", "arg": "zar"}, headers=h)
+        assert r.status_code == 400 and "odnowienia" in r.json["error"]
+    # auto-walka: własny plan
+    plan = [{"t": "item", "id": "*oil"}, {"t": "item", "id": "*heal", "hp_below": 99}, {"t": "attack", "id": "ciecie"}]
+    picked = []
+    for _ in range(60):
+        r = c.post("/api/combat", json={"action": "auto", "arg": plan}, headers=h)
+        if r.status_code == 400 and "Nie walczysz" in r.json["error"]:
+            break
+        assert r.status_code == 200, r.json
+        picked.append(r.json["result"]["auto"])
+        if r.json["result"]["summary"]:
+            break
+    assert picked[0]["arg"] == "olej_bestii"
+    # domyślny plan
+    admin(uid, heal=True)
+    set_combat(uid, "wilk")
+    r = c.post("/api/combat", json={"action": "auto"}, headers=h)
+    assert r.status_code == 200 and r.json["result"]["turn_log"][0]["who"] == "auto"
+
+
+def test_influence_and_contract_finder():
+    c, h, uid = client("Tropiciel")
+    goto(c, h, "power", "cmentarz")
+    ctx = c.get("/api/state", headers=h).json["state"]["ctx"]
+    p = ctx["powers"][0]
+    r = c.get(f"/api/influence?what=power:{p['id']}", headers=h)
+    assert r.status_code == 200 and r.json["title"] and r.json["stats"], r.json
+    r = c.get(f"/api/influence?what=terrain:{ctx['primary']}", headers=h)
+    assert r.status_code == 200 and r.json["title"]
+    assert c.get("/api/influence?what=night", headers=h).status_code == 200
+    # cel zlecenia: strzałka do potwora
+    r = c.get("/api/find?monster=upior", headers=h)
+    assert r.status_code == 200 and r.json["item"]["id"] == "monster:upior" and r.json["leads"], r.json
+    assert all("lat" in l and "lng" in l for l in r.json["leads"])
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

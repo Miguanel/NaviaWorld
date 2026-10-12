@@ -138,6 +138,8 @@ def _items_view(user_id):
 def state_payload(ch, ctx=None):
     ctx = ctx or world.context_at(ch["lat"], ch["lng"])
     d = chm.derived(ch, ctx)
+    if ch["hp"] > d["max_hp"]:  # np. punkt mocy obniżył witalność
+        ch["hp"] = d["max_hp"]
     site = campm.site_status(ch)
     structs = [campm.structure_view(s) for s in campm.reachable_structures(ch, site)]
     my_camp = query("SELECT * FROM camps WHERE owner_id=? AND expires_at>?", (ch["user_id"], time.time()), one=True)
@@ -184,10 +186,10 @@ def state_payload(ch, ctx=None):
 
 
 def respond(ch, result=None, ctx=None, full=True):
-    chm.save(ch)
     out = {"result": result}
     if full:
         out["state"] = state_payload(ch, ctx)
+    chm.save(ch)
     return jsonify(out)
 
 
@@ -212,7 +214,12 @@ def get_config():
                     "interact_radius": config.INTERACT_RADIUS_M, "camp_radius": config.CAMP_RADIUS_M,
                     "build_reach": config.BUILD_REACH_M, "site_spread": config.SITE_MAX_SPREAD_M,
                     "stat_names": chm.STAT_NAMES, "tiles": config.map_tiles(),
-                    "currency": {"names": config.CURRENCY, "per": config.GROSZE_PER_DOBROTA}})
+                    "currency": {"names": config.CURRENCY, "per": config.GROSZE_PER_DOBROTA},
+                    "explore_cooldown": config.EXPLORE_COOLDOWN_S,
+                    "combat_moves": {
+                        "attacks": [{"id": k, "name": v["name"], "glyph": v["glyph"], "cd": v["cd"]} for k, v in combatm.ATTACKS.items()],
+                        "spells": [{"id": k, "name": v["name"], "glyph": v["glyph"], "cd": v["cd"]} for k, v in combatm.SPELLS.items()],
+                        "default_plan": combatm.DEFAULT_PLAN}})
 
 
 @bp.get("/content")
@@ -313,7 +320,7 @@ def do_combat():
     b = _body()
     res = combatm.act(ch, b.get("action"), b.get("arg"))
     view = combatm.combat_view(ch) if ch.get("combat") else None
-    return respond(ch, {"turn_log": res["turn_log"], "summary": res["summary"], "combat": view,
+    return respond(ch, {"turn_log": res["turn_log"], "summary": res["summary"], "combat": view, "auto": res.get("auto"),
                         "monster_hp": res["combat"]["hp"], "monster_max_hp": res["combat"]["max_hp"]})
 
 
@@ -494,7 +501,19 @@ def home_uninvite():
 def find_item():
     ch = _char()
     chm.save(ch)
+    if request.args.get("monster"):
+        return jsonify(finder.find_monster(ch, request.args.get("monster")))
     return jsonify(finder.find(ch, request.args.get("item", "")))
+
+
+@bp.get("/influence")
+@login_required
+def influence():
+    """Dymek po kliknięciu czipa pozycji: jak teren / punkt mocy / noc wpływa na cechy i zdarzenia."""
+    ch = _char()
+    ctx = world.context_at(ch["lat"], ch["lng"])
+    chm.save(ch)
+    return jsonify(explorem.influence(ch, ctx, request.args.get("what", "")))
 
 
 # --------------------------------------------------------------------------- kramy graczy

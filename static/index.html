@@ -115,6 +115,7 @@
   <button class="round" id="btn-teleport" title="Teleport kliknięciem (debug)">✥</button>
   <button class="round" id="btn-admin" title="Panel admina">⚙</button>
   <button class="round hidden" id="btn-install" title="Zainstaluj aplikację">⇩</button>
+  <button class="round" id="btn-logout" title="Wyloguj">⏻</button>
 </div>
 
 <div id="dpad" class="hidden">
@@ -128,7 +129,10 @@
   <div class="explore-wrap">
     <div style="flex:1;min-width:0">
       <div class="modes" id="modes"></div>
-      <button class="omen-link" id="omen-link">Szepty okolicy — co może się wydarzyć?</button>
+      <div class="explore-links">
+        <button class="omen-link" id="omen-link">Szepty okolicy — co może się wydarzyć?</button>
+        <button class="auto-link" id="auto-btn" title="Auto-skan: samoczynna eksploracja i walka">⟳ Auto-skan</button>
+      </div>
     </div>
     <button class="explore-btn" id="explore-btn" title="Eksploruj">
       <svg viewBox="0 0 48 48"><use href="#i-eye"/></svg>
@@ -162,6 +166,7 @@
 <script src="/static/js/combat.js"></script>
 <script src="/static/js/bag.js"></script>
 <script src="/static/js/finder.js"></script>
+<script src="/static/js/auto.js"></script>
 <script src="/static/js/game.js"></script>
 </body>
 </html>

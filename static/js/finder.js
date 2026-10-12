@@ -62,7 +62,7 @@ const Finder = {
         h('span', { class: 'lg' }, g(l.glyph || '◆')),
         h('span', { class: 'lt' },
           h('b', {}, h('span', { class: 'lead-dot', style: { background: color } }), l.title),
-          h('small', {}, l.detail + (l.pct != null ? ` · szansa tam ~${l.pct}%` : '') + (l.night ? ' · częściej nocą' : '') + (l.day_only ? ' · tylko za dnia' : '')),
+          h('small', {}, l.detail + (l.pct != null ? ` · szansa tam ~${String(Math.round(l.pct * 10) / 10).replace('.', ',')}%` : '') + (l.night ? ' · częściej nocą' : '') + (l.day_only ? ' · tylko za dnia' : '')),
           h('div', { class: 'faint', style: { fontSize: '12px' } }, `${LEAD_TYPES[l.type] || ''}${l.place ? ' · ' + l.place : ''}`)),
         h('span', { class: 'ld' }, d < 30 ? 'tutaj' : fmtDist(d), h('br'),
           h('button', { class: 'btn small', style: { marginTop: '4px' }, onclick: () => { this.setTrail(res, [leads[i]]); Modal.close(); } }, 'Prowadź')));
@@ -84,16 +84,31 @@ const Finder = {
   async guide(itemId) {
     let res;
     try { res = await API.get('/find?item=' + encodeURIComponent(itemId)); } catch (e) { return toast(e.message, 'err'); }
+    this.guideRes(res);
+  },
+
+  /** Zlecenie ze strażnicy: strzałka do miejsca, gdzie najłatwiej spotkać potwora. */
+  async guideMonster(monsterId) {
+    let res;
+    try { res = await API.get('/find?monster=' + encodeURIComponent(monsterId)); } catch (e) { return toast(e.message, 'err'); }
+    if (!res.item) return toast('Nie znam takiego stwora.', 'err');
+    this.guideRes(res, 'Cel zlecenia');
+  },
+
+  guideRes(res, prefix = '') {
     if (!res.leads.length) return this.showLeads(res);
     const pos = Game.pos;
-    const best = res.leads.map(l => ({ ...l, itemName: res.item.name, d: distM(pos[0], pos[1], l.lat, l.lng) }))
-      .sort((a, b) => a.d - b.d)[0];
+    const all = res.leads.map(l => ({ ...l, itemName: res.item.name, d: distM(pos[0], pos[1], l.lat, l.lng) }));
+    // dla potwora: najpierw miejsca, które lubi (direct), potem najbliższe
+    const best = all.sort((a, b) => (b.direct ? 1 : 0) - (a.direct ? 1 : 0) || a.d - b.d)[0];
     Sheet.close();
+    Modal.close();
     this.setTrail(res, [best], true, false);
     const deg = bearingDeg(pos[0], pos[1], best.lat, best.lng);
+    const pre = prefix ? prefix + ': ' : '🧭 ';
     toast(best.d < 30
-      ? `${res.item.name}: jesteś na miejscu — ${best.title}.`
-      : `🧭 ${res.item.name}: ${best.title} — ${fmtDist(best.d)}, azymut ${Math.round(deg)}° (${directionName(deg)}).`, 'good');
+      ? `${pre}${res.item.name} — jesteś na miejscu (${best.place || best.title}).${best.pct != null ? ` Szansa ~${String(Math.round(best.pct * 10) / 10).replace('.', ',')}% na każdy skan.` : ''}`
+      : `${pre}${res.item.name} — ${best.place || best.title}, ${fmtDist(best.d)}, azymut ${Math.round(deg)}° (${directionName(deg)}).`, 'good');
   },
 
   setTrail(res, leads, fit = true, announce = true) {

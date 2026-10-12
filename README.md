@@ -149,16 +149,46 @@ Na mapie pojawiają się kolorowe strzałki wokół gracza. Dotknięcie strzałk
 
 ### Energia i wigor
 - **Energia** to „paliwo” przycisku **Eksploruj**: każda eksploracja kosztuje 1–5 pkt zależnie od trybu, a odnawia się +10 pkt na godzinę.
-- **Wigor** to siły łowcy: zbieranie surowców, czary i potężne ciosy w walce. Odnawia się sam, a **każdy przebyty metr daje +1 wigoru** (`VIGOR_PER_METER` w `config.py` albo zmienna `NAVIA_VIGOR_PER_M`). Gra pomija drgania GPS (poniżej 4 m), jazdę szybszą niż ok. 29 km/h, skoki i teleporty powyżej 200 m oraz chodzenie w trakcie walki.
+- **Wigor** to siły łowcy na zbieractwo i przeszukiwanie (w walce wigor nie jest zużywany). Odnawia się sam, a **każdy przebyty metr daje +1 wigoru** (`VIGOR_PER_METER` w `config.py` albo zmienna `NAVIA_VIGOR_PER_M`). Gra pomija drgania GPS (poniżej 4 m), jazdę szybszą niż ok. 29 km/h, skoki i teleporty powyżej 200 m oraz chodzenie w trakcie walki.
 
 ### Walka (turowa, jak w Pokémonach)
 W każdej turze wybierasz jedną z czterech opcji:
 - **Atak:** cięcie, szybkie pchnięcie (zawsze pierwsze), potężny cios, finta (osłabia obronę wroga);
-- **Czary:** Żar Swaroga, Tchnienie Strzyboga, Tarcza Peruna, Pęta Welesa, Szept Mokoszy. Zużywają wigor;
+- **Czary:** Żar Swaroga, Tchnienie Strzyboga, Tarcza Peruna, Pęta Welesa, Szept Mokoszy;
 - **Torba:** eliksiry, jedzenie, oleje na ostrze (premia przeciw rodzinie potworów) i rzuty, np. święta woda na upiory;
 - **Ucieczka.**
 
+**Walka nie zużywa wigoru.** Silniejsze ruchy mają **odnowienie** liczone w turach: potężny cios 2, finta 3, Żar i Tchnienie 3, Tarcza i Pęta 4, Szept 5 (`cd` w `navia/combat.py`). Cięcie i pchnięcie są dostępne zawsze.
+
+Każdy przycisk pokazuje **statystyki ruchu**: przewidywane obrażenia po pancerzu wroga, szansę trafienia, szansę na krytyk, odnowienie, działanie (np. „ogłuszenie 60%”) i trafione słabości ★. Na kartach widać atak, obronę i szybkość obu stron, a „ⓘ Wróg” pokazuje ruchy potwora z celnością i obrażeniami. Dziennik walki pod każdym ciosem wypisuje rzut: celność, siłę, pancerz, krytyk i zdrowie po trafieniu.
+
 Kolejność w turze zależy od Zręczności i szybkości potwora. Potwory mają własne ataki z efektami: krwawienie, trucizna, ogłuszenie, wysysanie, osłabienie. Działają też słabości: olej, srebro, ogień, światło.
+
+### Auto-walka i plan walki
+- Przycisk **▶ Auto** w walce: łowca sam wybiera ruchy, a ty patrzysz. Wyłączasz go tym samym przyciskiem.
+- **⚙ Plan** to lista priorytetów. W każdej turze gra sprawdza kroki od góry i bierze pierwszy możliwy: ruch nie jest w odnowieniu, przedmiot jest w torbie, a warunek **„HP < x%”** (jeśli go wpiszesz) jest spełniony. Gdy nic nie pasuje, łowca tnie.
+- Kroki specjalne: **najlepsze leczenie** (najpierw jadło bez toksyn, nigdy ponad limit toksyczności), **pasujący olej** (tylko na właściwą rodzinę, raz na walkę) i **najlepszy pocisk**. Można też dodać konkretny przedmiot albo ucieczkę.
+- Plan zapisuje się w przeglądarce. Domyślny: leczenie przy HP < 35%, Szept przy HP < 40%, olej, Pęta, Żar, finta, potężny cios, cięcie.
+
+### Auto-skan (farmienie)
+Przycisk **⟳ Auto-skan** pod trybami eksploracji. Łowca sam przeczesuje okolicę w wybranym trybie:
+- eksploruje co kilka sekund (tak często, jak pozwala serwer);
+- zbiera to, co rośnie pod nogami, jeśli ma narzędzie i wigor;
+- potwory bije **auto-walką według planu**. Może też najpierw próbować uciec przed silniejszymi;
+- zatrzymuje się, gdy zdrowie spadnie poniżej progu, skończy się energia (z opcjonalnym zapasem), minie zadana liczba skanów albo przy porażce.
+
+Na dole widać pasek z postępem i przyciskiem **■ Stop**, a na końcu podsumowanie: skany, walki, doświadczenie, monety i wszystkie łupy. Na telefonie auto-skan nie pozwala zgasnąć ekranowi.
+
+### Dymki „jak to miejsce na mnie działa”
+Dotknij czipa pozycji pod paskami: terenu, punktu mocy albo nocy. Pojawi się dymek:
+- **wpływ na cechy** (np. cmentarz: +2,6 Moc, −1,3 Witalność; wartość zależy od odległości od środka);
+- **zmiana szans na zdarzenia**: „było → jest” z mnożnikiem, czyli porównanie z tym samym miejscem bez tego terenu, punktu mocy albo nocy;
+- co można tu **zbierać** i jaka jest siła działania.
+
+Czip efektu (eliksiru, błogosławieństwa) pokazuje jego cechy i czas trwania.
+
+### Zlecenia ze strażnicy: strzałka do celu
+Przy każdym zleceniu na tablicy jest **🧭 Gdzie?**, a w Postaci przy przyjętych zleceniach **🧭 Prowadź**. Gra wskazuje miejsce, gdzie najłatwiej spotkać danego stwora: teren albo punkt mocy, który on lubi, z szansą na każdy skan. Podpowiada też budynki, w których przeszukiwanie może go zbudzić (cmentarz, ruiny). Na mapie pojawia się strzałka z odległością i azymutem. Po pokonaniu stwora trop sam się kończy.
 
 ### Crafting
 - Przeciągnij w Torbie **przedmiot na przedmiot**. Pojawi się dymek z pasującymi recepturami i szansą powodzenia. Na telefonie przytrzymaj przedmiot i przeciągnij, albo wybierz „Połącz z…”.
@@ -179,6 +209,12 @@ Wywary przemiany zmieniają cechy **na zawsze**. Dodają toksyczność i niosą 
 
 ### Strzałka z Księgi receptur
 Dotknij składnika albo narzędzia w recepturze. Na mapie od razu pojawi się strzałka do najbliższego miejsca, gdzie go zdobędziesz, a gra poda odległość i **azymut** (np. „298 m, azymut 58°, północny wschód”).
+
+### Torba
+Widok „Wszystko” jest podzielony na grupy (Surowce, Alchemia, Wyposażenie, Obozowisko, Prowiant i skarby), a w nich na sekcje kategorii z liczbą rodzajów i sztuk. Sekcje zwijasz dotknięciem nagłówka, a gra to zapamiętuje.
+
+### Wylogowanie
+Okrągły przycisk **⏻** na prawym pasku mapy, a także na dole panelu Postać i w panelu admina.
 
 ### Obóz i siedlisko
 - **Obóz** budujesz z 4 drewna; potrzebne jest też krzesiwo w torbie. Widzą go wszyscy, podpisany Twoim imieniem. Po 24 h wygasa i na mapie stopniowo blednie. Drewno dorzucone do ogniska wydłuża mu życie.
@@ -216,6 +252,7 @@ navia/finder.py        – tropiciel: gdzie zdobyć dany towar
 navia/character.py     – postać, cechy, ekwipunek, mutacje
 navia/api.py, admin.py – REST API gry i panelu
 static/                – interfejs (HTML/CSS/JS), PWA, ikony
+static/js/auto.js      – auto-skan (farmienie)
 tests/test_flow.py     – testy całej pętli gry
 ```
 

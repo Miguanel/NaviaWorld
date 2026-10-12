@@ -169,6 +169,17 @@ const Game = {
     });
     $('#explore-btn').addEventListener('click', () => this.explore());
     $('#omen-link').addEventListener('click', () => this.showOmens());
+    $('#auto-btn').addEventListener('click', () => AutoScan.open());
+    $('#btn-logout').addEventListener('click', () => this.logout());
+  },
+
+  async logout(ask = true) {
+    if (ask && !confirm('Wylogować się z gry? Postać i torba zostaną na serwerze.')) return;
+    if (typeof AutoScan !== 'undefined' && AutoScan.running) AutoScan.running = false;
+    try { await API.post('/logout'); } catch (e) { /* i tak czyścimy */ }
+    API.setToken(null);
+    Store.del('navia_trail');
+    location.reload();
   },
 
   // ----------------------------------------------------------- stan
@@ -212,12 +223,13 @@ const Game = {
     const t = this.content.terrains[x.primary] || {};
     const box = $('#ctxbar');
     box.innerHTML = '';
-    box.append(h('span', { class: 'chip ctx-terrain', style: { '--tc': t.color }, title: x.terrain_desc },
-      h('span', { style: { color: t.color } }, '■'), x.zone_name && x.zone_name !== x.primary_name ? `${x.primary_name} · ${x.zone_name}` : x.primary_name));
-    if (x.night) box.append(h('span', { class: 'chip ctx-night' }, '☾ noc'));
+    box.append(h('button', { class: 'chip ctx-terrain', style: { '--tc': t.color }, title: 'Jak ten teren na ciebie działa?', onclick: e => this.showInfluence(e.currentTarget, 'terrain:' + x.primary) },
+      h('span', { style: { color: t.color } }, '■'), x.zone_name && x.zone_name !== x.primary_name ? `${x.primary_name} · ${x.zone_name}` : x.primary_name,
+      Object.keys(x.terrains).length > 1 ? h('small', {}, ` +${Object.keys(x.terrains).length - 1}`) : null));
+    if (x.night) box.append(h('button', { class: 'chip ctx-night', onclick: e => this.showInfluence(e.currentTarget, 'night') }, '☾ noc'));
     for (const p of x.powers.slice(0, 4)) {
       const k = this.content.power_kinds[p.kind] || {};
-      box.append(h('span', { class: 'chip', style: { borderColor: k.color }, title: k.description },
+      box.append(h('button', { class: 'chip', style: { borderColor: k.color }, title: 'Jak ten punkt mocy na ciebie działa?', onclick: e => this.showInfluence(e.currentTarget, 'power:' + p.id) },
         h('span', { style: { color: k.color } }, p.glyph), `${p.name || p.kind_name} ${Math.round(p.infl * 100)}%`));
     }
     if (typeof Finder !== 'undefined' && Finder.active) {
@@ -226,8 +238,55 @@ const Game = {
         g(Finder.active.item.glyph), ` ${Finder.active.item.name}${n ? ' · ' + (n.d < 30 ? 'tutaj' : `${fmtDist(n.d)} · ${Math.round(bearingDeg(this.pos[0], this.pos[1], n.l.lat, n.l.lng))}°`) : ''}`));
     }
     for (const e of this.state.char.effects.slice(0, 3)) {
-      box.append(h('span', { class: 'chip', title: this.fmtStats(e.stats), style: { borderColor: 'var(--moss)' } }, '✧ ' + e.name));
+      box.append(h('button', { class: 'chip', style: { borderColor: 'var(--moss)' }, onclick: ev => Bubble.show(ev.currentTarget, [
+        h('div', { class: 'bb-title' }, '✧ ', e.name),
+        h('div', { class: 'bb-stats' }, Object.entries(e.stats || {}).map(([k, v]) => this.statChip(k, v))),
+        h('div', { class: 'faint' }, `Mija za ${fmtTime(e.left)}.`)]) }, '✧ ' + e.name));
     }
+  },
+
+  statChip(k, v) {
+    const r = Math.round(v * 10) / 10;
+    return h('span', { class: 'bb-stat ' + (r >= 0 ? 'up' : 'down') }, `${r > 0 ? '+' : ''}${String(r).replace('.', ',')} ${this.statName(k)}`);
+  },
+
+  /** Dymek: jak teren / punkt mocy / noc wpływa na cechy i szanse zdarzeń */
+  async showInfluence(anchor, what) {
+    const pct = v => (v < 10 ? String(Math.round(v * 10) / 10).replace('.', ',') : Math.round(v)) + '%';
+    Bubble.show(anchor, h('div', { class: 'muted' }, 'Wsłuchuję się w okolicę…'));
+    let r;
+    try { r = await API.get('/influence?what=' + encodeURIComponent(what)); } catch (e) { return Bubble.show(anchor, h('div', {}, e.message)); }
+    const kindName = { monster: 'potwór', item: 'znalezisko', story: 'zdarzenie' };
+    const x = this.state.ctx;
+    const others = what.startsWith('terrain:') ? Object.entries(x.terrains).filter(([k]) => 'terrain:' + k !== what) : [];
+    const parts = [
+      h('div', { class: 'bb-title' }, h('span', { style: { color: r.color || 'inherit' } }, r.glyph || ''), ' ', r.title,
+        r.infl != null ? h('span', { class: 'bb-infl' }, `siła ${Math.round(r.infl * 100)}%`) : null),
+      r.desc ? h('p', { class: 'bb-desc' }, r.desc) : null,
+    ];
+    const st = Object.entries(r.stats || {}).filter(([, v]) => Math.abs(v) >= 0.05);
+    parts.push(h('div', { class: 'bb-sec' }, 'Wpływ na cechy'),
+      st.length ? h('div', { class: 'bb-stats' }, st.map(([k, v]) => this.statChip(k, v))) : h('div', { class: 'faint' }, 'Nie zmienia twoich cech.'));
+    parts.push(h('div', { class: 'bb-sec' }, 'Szanse na zdarzenia (tryb normalny)'));
+    if (!r.changes.length) parts.push(h('div', { class: 'faint' }, 'Nie zmienia wyraźnie tego, co możesz spotkać.'));
+    for (const c of r.changes) {
+      const up = c.now > c.without;
+      parts.push(h('div', { class: 'bb-row' },
+        h('span', { class: 'bb-l' }, c.label, h('small', {}, ' ' + (kindName[c.kind] || ''))),
+        h('span', { class: 'bb-v ' + (up ? 'up' : 'down') },
+          c.without ? `${pct(c.without)} → ${pct(c.now)}` : `tylko tu: ${pct(c.now)}`,
+          c.ratio ? h('small', {}, ` ×${String(c.ratio).replace('.', ',')}`) : null)));
+    }
+    if (r.gathers?.length) {
+      parts.push(h('div', { class: 'bb-sec' }, 'Można tu zbierać'),
+        h('div', { class: 'bb-stats' }, r.gathers.map(gt => h('span', { class: 'bb-stat' }, `${gt.name}${gt.tool ? ` (${gt.tool})` : ''} · ${gt.vigor} wig.`))));
+    }
+    for (const n of r.notes || []) parts.push(h('div', { class: 'faint', style: { marginTop: '6px', fontSize: '12px' } }, n));
+    if (others.length) {
+      parts.push(h('div', { class: 'bb-sec' }, 'Inne tereny w tym miejscu'),
+        h('div', { class: 'bb-stats' }, others.map(([k, v]) => h('button', { class: 'bb-stat link', onclick: () => this.showInfluence(anchor, 'terrain:' + k) }, `${this.content.terrains[k]?.name || k} ${Math.round(v * 100)}%`))));
+    }
+    Bubble.show(anchor, parts);
   },
 
   renderNearby() {
@@ -260,7 +319,10 @@ const Game = {
         onclick: () => { this.mode = id; Store.set('navia_mode', id); this.renderModes(); },
       }, h('b', {}, `${m.cost} `, g('⚡')), m.name));
     }
-    $('#explore-btn').disabled = en < (this.state.energy_modes[this.mode]?.cost || 1) || this.busy;
+    const auto = typeof AutoScan !== 'undefined' && AutoScan.running;
+    $('#explore-btn').disabled = en < (this.state.energy_modes[this.mode]?.cost || 1) || this.busy || auto;
+    $('#auto-btn').classList.toggle('on', auto);
+    $('#auto-btn').textContent = auto ? '■ Zatrzymaj auto-skan' : '⟳ Auto-skan';
   },
 
   // ----------------------------------------------------------- ruch
@@ -436,7 +498,7 @@ const Game = {
 
   // ----------------------------------------------------------- eksploracja
   async explore() {
-    if (this.busy) return;
+    if (this.busy || (typeof AutoScan !== 'undefined' && AutoScan.running)) return;
     this.busy = true;
     const btn = $('#explore-btn');
     btn.classList.add('busy'); btn.disabled = true;
@@ -607,7 +669,8 @@ const Game = {
           h('p', { style: { margin: '4px 0', fontSize: '14px' } }, c.text),
           h('div', { class: 'row' }, h('span', { class: 'faint', style: { fontSize: '12px' } }, `poz. ${c.level} · ${c.xp} PD`), h('span', { class: 'spacer' }),
             c.done && !c.claimed ? h('button', { class: 'btn small primary', onclick: () => this.buildingAct(b, a.index, { contract: c.id, op: 'claim' }) }, 'Odbierz nagrodę')
-              : c.taken ? h('span', { class: 'chip' }, 'przyjęte') : h('button', { class: 'btn small', onclick: () => this.buildingAct(b, a.index, { contract: c.id, op: 'take' }) }, 'Przyjmij')))));
+              : c.taken ? h('span', { class: 'chip' }, 'przyjęte') : h('button', { class: 'btn small', onclick: () => this.buildingAct(b, a.index, { contract: c.id, op: 'take' }) }, 'Przyjmij'),
+            !c.done ? h('button', { class: 'btn small ghost', title: 'Strzałka do miejsca, gdzie najłatwiej spotkać tego stwora', onclick: () => Finder.guideMonster(c.monster) }, '🧭 Gdzie?') : null))));
       }
     }
     if (b.stalls && b.stalls.length) {
@@ -651,14 +714,18 @@ const Game = {
     for (const e of c.effects) body.append(h('div', { class: 'row', style: { padding: '4px 0' } }, h('span', {}, '✧ ' + e.name), h('span', { class: 'muted' }, this.fmtStats(e.stats)), h('span', { class: 'spacer' }), h('span', { class: 'faint' }, fmtTime(e.left))));
     body.append(h('div', { class: 'section-title' }, 'Zlecenia'));
     if (!c.contracts.length) body.append(h('p', { class: 'muted' }, 'Zlecenia przyjmiesz w strażnicy.'));
-    for (const ct of c.contracts) body.append(h('div', { class: 'row', style: { padding: '4px 0' } }, h('span', {}, ct.title), h('span', { class: 'spacer' }), h('span', { class: 'chip' }, ct.claimed ? 'rozliczone' : ct.done ? 'do odebrania' : 'w toku')));
+    for (const ct of c.contracts) {
+      body.append(h('div', { class: 'row', style: { padding: '4px 0' } }, h('span', {}, ct.title), h('span', { class: 'spacer' }),
+        !ct.done ? h('button', { class: 'btn small ghost', title: 'Prowadź do miejsca, gdzie ten stwór bywa', onclick: () => Finder.guideMonster(ct.monster) }, '🧭 Prowadź') : null,
+        h('span', { class: 'chip' }, ct.claimed ? 'rozliczone' : ct.done ? 'do odebrania' : 'w toku')));
+    }
     if (!this.isInstalled) {
       body.append(h('div', { class: 'section-title' }, 'Aplikacja'),
         h('div', { class: 'card' }, h('p', { style: { margin: '0 0 8px' } }, 'Zainstaluj grę na telefonie — otworzy się na pełnym ekranie i załaduje od razu, a serwer obudzi się w tle.'),
           h('button', { class: 'btn', onclick: () => this.install() }, '⇩ Zainstaluj aplikację')));
     }
     body.append(h('div', { class: 'ornament' }),
-      h('button', { class: 'btn ghost block', onclick: async () => { try { await API.post('/logout'); } catch (e) { /* */ } API.setToken(null); location.reload(); } }, 'Wyloguj'));
+      h('button', { class: 'btn ghost block', onclick: () => this.logout() }, '⏻ Wyloguj'));
   },
 
   renderCamp(body) {

@@ -6,6 +6,13 @@ const Admin = {
   current: null,
   query: '',
 
+  async logout() {
+    if (!confirm('Wylogować się?')) return;
+    try { await API.post('/logout'); } catch (e) { /* */ }
+    API.setToken(null);
+    location.href = '/';
+  },
+
   async boot() {
     try {
       this.meta = await API.get('/admin/meta');

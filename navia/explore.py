@@ -1,5 +1,6 @@
 """Eksploracja: procentowe losowanie zdarzeń z puli zależnie od terenu,
 punktów mocy, pory dnia, poziomu postaci i wybranego trybu (łatwy…specjalny)."""
+import math
 import random
 
 from . import config
@@ -180,3 +181,69 @@ def explore(ch, ctx, mode_id):
             result["combat"] = start_combat(ch, c["monsters"][monster], ctx, strength=mode["strength"], reward=mult)
     chm.journal(ch["user_id"], "explore", f"[{mode['name']}] {ev['name']}: {result['text']}"[:500])
     return result
+
+
+def influence(ch, ctx, what):
+    """Jak wybrany element miejsca (teren, punkt mocy, noc) zmienia cechy i szanse zdarzeń.
+    Porównujemy szanse „teraz” z szansami „gdyby tego elementu nie było”."""
+    c = content()
+    d = chm.derived(ch, ctx)
+    perc, lvl = d["stats"]["percepcja"], ch["level"]
+    terr, pinf, night = dict(ctx["terrains"]), dict(ctx["power_infl"]), ctx["night"]
+    kind, _, ref = (what or "").partition(":")
+    out = {"what": what, "title": "", "glyph": "", "color": None, "desc": "", "infl": None,
+           "stats": {}, "changes": [], "gathers": [], "notes": []}
+
+    def gathers_for(tkey):
+        for g in c["gather_actions"].values():
+            if g.get("enabled", 1) and (g.get("terrain") or "*") == tkey:
+                tool = c["items"].get(g.get("tool") or "", {}).get("name")
+                out["gathers"].append({"name": g["name"], "vigor": g.get("vigor_cost", 3), "tool": tool})
+
+    if kind == "terrain":
+        t = c["terrains"].get(ref, {})
+        out.update(title=t.get("name", ref), glyph="■", color=t.get("color"), desc=t.get("description", ""),
+                   infl=terr.get(ref))
+        terr.pop(ref, None)
+        if not terr:
+            terr = {"trakt": 1.0}
+        gathers_for(ref)
+        if ref in ctx["terrains"] and ctx["terrains"][ref] < 1:
+            out["notes"].append("Im głębiej w obszar, tym silniej działa (od 50% na skraju do 100% w środku).")
+    elif kind == "power":
+        p = next((x for x in ctx["powers"] if str(x["id"]) == ref or x["kind"] == ref), None)
+        if not p:
+            out["title"] = "Punkt mocy poza zasięgiem"
+            return out
+        pk = c["power_kinds"].get(p["kind"], {})
+        infl = pinf.get(p["kind"], p["infl"])
+        out.update(title=p.get("name") or pk.get("name", p["kind"]), glyph=pk.get("glyph", "✶"), color=pk.get("color"),
+                   desc=pk.get("description", ""), infl=infl, kind_name=pk.get("name"), dist=p.get("dist"))
+        out["stats"] = {s: round(v * infl, 2) for s, v in (pk.get("stat_mods") or {}).items()}
+        pinf.pop(p["kind"], None)
+        gathers_for("power:" + p["kind"])
+        out["notes"].append(f"Siła działania {round(infl * 100)}% — rośnie, im bliżej środka (jesteś {p.get('dist')} m od niego).")
+    elif kind == "night":
+        out.update(title="Noc", glyph="☾", desc="Od zmierzchu do świtu upiory i nocne bestie wychodzą śmielej, a dzienne stworzenia się kryją.")
+        night = not night
+    else:
+        out["title"] = "Nieznane"
+        return out
+
+    now = {p["id"]: p for p in probabilities(ctx["terrains"], ctx["power_infl"], ctx["night"], lvl, "normalny", perc)}
+    base = {p["id"]: p for p in probabilities(terr, pinf, night, lvl, "normalny", perc)}
+    rows = []
+    for eid in set(now) | set(base):
+        a, b = now.get(eid), base.get(eid)
+        pa, pb = (a or {}).get("pct", 0), (b or {}).get("pct", 0)
+        if max(pa, pb) < 0.3:
+            continue
+        ratio = (pa / pb) if pb else 99.0
+        if 0.87 < ratio < 1.15:
+            continue
+        ref_row = a or b
+        rows.append({"label": ref_row["label"], "kind": ref_row["kind"], "now": pa, "without": pb,
+                     "ratio": round(ratio, 2) if pb else None})
+    rows.sort(key=lambda r: -abs(math.log(max(0.01, r["ratio"] or 50))) - r["now"] / 100.0)
+    out["changes"] = rows[:10]
+    return out

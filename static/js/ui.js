@@ -131,3 +131,36 @@ function directionName(deg) {
   return ['północ', 'północny wschód', 'wschód', 'południowy wschód', 'południe', 'południowy zachód', 'zachód', 'północny zachód'][Math.round(deg / 45) % 8];
 }
 function fmtDist(m) { return m >= 1000 ? (m / 1000).toFixed(1).replace('.', ',') + ' km' : Math.round(m) + ' m'; }
+
+/* Dymek przyklejony do elementu (np. czipa pozycji). Zamyka się kliknięciem obok. */
+const Bubble = {
+  el: null,
+  rect: null,
+  show(anchor, content) {
+    this.hide(true);
+    if (anchor && anchor.isConnected) this.rect = anchor.getBoundingClientRect();
+    const r = this.rect || { left: 12, bottom: 80, width: 0 };
+    const el = h('div', { class: 'pbubble' }, h('button', { class: 'bb-x', onclick: () => this.hide() }, '✕'), content);
+    document.body.append(el);
+    const w = Math.min(360, window.innerWidth - 24);
+    el.style.width = w + 'px';
+    el.style.left = Math.max(12, Math.min(window.innerWidth - w - 12, r.left + r.width / 2 - w / 2)) + 'px';
+    el.style.top = (r.bottom + 8) + 'px';
+    el.style.maxHeight = (window.innerHeight - r.bottom - 24) + 'px';
+    const tip = h('i', { class: 'bb-tip' });
+    tip.style.left = Math.max(14, Math.min(w - 14, r.left + r.width / 2 - parseFloat(el.style.left))) + 'px';
+    el.append(tip);
+    this.el = el;
+    setTimeout(() => {
+      this._off = e => { if (this.el && !this.el.contains(e.target) && !(anchor && anchor.contains && anchor.contains(e.target))) this.hide(); };
+      document.addEventListener('pointerdown', this._off, true);
+    }, 0);
+  },
+  hide(keepRect) {
+    if (this._off) document.removeEventListener('pointerdown', this._off, true);
+    this._off = null;
+    this.el?.remove();
+    this.el = null;
+    if (!keepRect) this.rect = null;
+  },
+};

@@ -56,6 +56,97 @@ def _event_sources(item_id, c):
     return out
 
 
+def _best_spot(lat, lng, pl, ev, c):
+    """Najlepsze miejsce w okolicy dla zdarzenia: blisko i z mocnym mnożnikiem terenu / punktu mocy.
+    Zwraca (lat, lng, odległość, nazwa miejsca) albo None."""
+    tm = {k: v for k, v in (ev.get("terrain_mods") or {}).items() if float(v) > 1}
+    pm = {k: v for k, v in (ev.get("power_mods") or {}).items() if float(v) > 1}
+    best = None  # (wynik, tl, tg, d, nazwa)
+    for p in pl["zones"]:
+        if p["kind"] in tm:
+            tl, tg, d = _toward(lat, lng, p, p.get("radius") or 0)
+            score = (d + 50) / float(tm[p["kind"]])
+            if best is None or score < best[0]:
+                best = (score, tl, tg, d, f"{c['terrains'].get(p['kind'], {}).get('name', p['kind'])} · {p.get('name') or ''}".strip(" ·"))
+    for p in pl["power"]:
+        if p["kind"] in pm:
+            tl, tg, d = _toward(lat, lng, p, (p.get("radius") or 0) * 0.5)
+            score = (d + 50) / float(pm[p["kind"]])
+            if best is None or score < best[0]:
+                best = (score, tl, tg, d, p.get("name") or c["power_kinds"].get(p["kind"], {}).get("name", p["kind"]))
+    if best:
+        return best[1:]
+    if (ev.get("other_terrain") if ev.get("other_terrain") is not None else 1) > 0 and not tm:
+        return lat, lng, 0, "dowolne miejsce"
+    return None
+
+
+def _pct_at(ch, tl, tg, event_id, mode="normalny"):
+    try:
+        ctx = context_at(tl, tg)
+        probs = probabilities(ctx["terrains"], ctx["power_infl"], ctx["night"], ch["level"], mode)
+        return next((p["pct"] for p in probs if p["id"] == event_id), None)
+    except Exception:  # bez szansy — nie szkodzi
+        return None
+
+
+def find_monster(ch, monster_id):
+    """Gdzie najłatwiej spotkać danego potwora (do zleceń ze strażnicy)."""
+    c = content()
+    m = c["monsters"].get(monster_id)
+    if not m:
+        return {"item": None, "leads": [], "recipes": []}
+    lat, lng = ch["lat"], ch["lng"]
+    pl = places_around(lat, lng, cells=SEARCH_CELLS)
+    leads = []
+    for ev in c["events"].values():
+        if not ev.get("enabled", 1):
+            continue
+        direct = ev["kind"] == "monster" and ev.get("ref") == monster_id
+        branch = any(br.get("monster") == monster_id for br in (ev.get("outcome") or {}).get("branches") or [])
+        if not (direct or branch):
+            continue
+        spot = _best_spot(lat, lng, pl, ev, c)
+        if not spot:
+            continue
+        tl, tg, d, pname = spot
+        tm = [c["terrains"].get(k, {}).get("name", k) for k, v in (ev.get("terrain_mods") or {}).items() if float(v) > 1]
+        pm = [c["power_kinds"].get(k, {}).get("name", k) for k, v in (ev.get("power_mods") or {}).items() if float(v) > 1]
+        where = ", ".join(tm + pm) or "wszędzie"
+        detail = (f"lubi: {where}" if direct else f"zdarzenie „{ev['name']}” może skończyć się walką") + \
+                 (" · częściej nocą" if ev.get("night_mult", 1) > 1.5 else "")
+        leads.append({"type": "hunt", "title": f"Poluj: {m['name']}", "detail": detail, "lat": tl, "lng": tg,
+                      "dist": round(d), "place": pname, "glyph": m.get("glyph", "☠"), "event": ev["id"],
+                      "night": ev.get("night_mult", 1) > 1.5, "day_only": ev.get("night_mult", 1) < 0.2,
+                      "direct": direct})
+    # budynki, w których przeszukiwanie może zbudzić tego potwora (cmentarz, ruiny…)
+    for b in pl["buildings"]:
+        bt = c["building_types"].get(b["kind"]) or {}
+        for a in bt.get("actions") or []:
+            if a.get("type") == "search" and monster_id in (a.get("monsters") or []):
+                tool = c["items"].get(a.get("tool") or "", {}).get("name")
+                leads.append({"type": "search", "title": f"{a['label']}: {bt['name']}",
+                              "detail": f"ryzyko walki {round(a.get('risk', 0.3) * 100)}%, potwór losowany z {len(a['monsters'])}"
+                                        + (f" · potrzebne: {tool}" if tool else ""),
+                              "lat": b["lat"], "lng": b["lng"], "dist": round(dist_m(lat, lng, b["lat"], b["lng"])),
+                              "place": b.get("name") or bt["name"], "glyph": bt.get("glyph", "⌂"), "building": b["id"],
+                              "direct": False, "pct": None})
+    leads.sort(key=lambda l: (not l["direct"], l["dist"]))
+    seen, uniq = set(), []
+    for l in leads:
+        key = (l["type"], l.get("event") or l["title"])
+        if key not in seen:
+            seen.add(key)
+            uniq.append(l)
+    leads = uniq[:5]
+    for l in leads:
+        if l.get("event"):
+            l["pct"] = _pct_at(ch, l["lat"], l["lng"], l["event"])
+    return {"item": {"id": "monster:" + monster_id, "name": m["name"], "glyph": m.get("glyph", "☠"),
+                     "description": m.get("description") or m.get("lore") or ""},
+            "leads": leads, "recipes": [], "monster": monster_id}
+
+
 def find(ch, item_id):
     c = content()
     it = c["items"].get(item_id)
@@ -97,27 +188,10 @@ def find(ch, item_id):
 
     # 2. eksploracja (zdarzenia i potwory)
     for ev, desc, chance, monster in _event_sources(item_id, c):
-        tm = {k: v for k, v in (ev.get("terrain_mods") or {}).items() if float(v) > 1}
-        pm = {k: v for k, v in (ev.get("power_mods") or {}).items() if float(v) > 1}
-        best = None  # (wynik, p, tl, tg, d, nazwa)
-        for p in pl["zones"]:
-            if p["kind"] in tm:
-                tl, tg, d = _toward(lat, lng, p, p.get("radius") or 0)
-                score = (d + 50) / float(tm[p["kind"]])
-                if best is None or score < best[0]:
-                    best = (score, p, tl, tg, d, f"{c['terrains'].get(p['kind'], {}).get('name', p['kind'])} · {p.get('name') or ''}".strip(" ·"))
-        for p in pl["power"]:
-            if p["kind"] in pm:
-                tl, tg, d = _toward(lat, lng, p, (p.get("radius") or 0) * 0.5)
-                score = (d + 50) / float(pm[p["kind"]])
-                if best is None or score < best[0]:
-                    best = (score, p, tl, tg, d, p.get("name") or c["power_kinds"].get(p["kind"], {}).get("name", p["kind"]))
-        if best:
-            _, p, tl, tg, d, pname = best
-        elif (ev.get("other_terrain") if ev.get("other_terrain") is not None else 1) > 0 and not tm:
-            tl, tg, d, pname = lat, lng, 0, "dowolne miejsce"
-        else:
+        spot = _best_spot(lat, lng, pl, ev, c)
+        if not spot:
             continue
+        tl, tg, d, pname = spot
         kind = "hunt" if monster else "explore"
         title = f"Poluj: {monster['name']}" if monster else f"Eksploruj: {ev['name']}"
         add(kind, title, desc + (f" (łup {round(chance * 100)}%)" if monster else ""), tl, tg, d, pname,
@@ -165,12 +239,7 @@ def find(ch, item_id):
     # przybliżona szansa na zdarzenie w miejscu docelowym
     for l in uniq:
         if l.get("event"):
-            try:
-                ctx = context_at(l["lat"], l["lng"])
-                probs = probabilities(ctx["terrains"], ctx["power_infl"], ctx["night"], ch["level"])
-                l["pct"] = next((p["pct"] for p in probs if p["id"] == l["event"]), None)
-            except Exception:  # bez szansy — nie szkodzi
-                l["pct"] = None
+            l["pct"] = _pct_at(ch, l["lat"], l["lng"], l["event"], "normalny")
 
     recipes = [{"id": r["id"], "name": r["name"]} for r in c["recipes"].values()
                if r.get("result_item") == item_id and r.get("enabled", 1)]

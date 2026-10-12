@@ -1,4 +1,12 @@
 /* Torba (przeciąganie przedmiotów, dymki craftingu) i księga receptur */
+const BAG_GROUPS = [
+  { name: 'Surowce', glyph: '🌿', cats: ['ziolo', 'grzyb', 'mineral', 'drewno', 'woda', 'czesc_potwora'] },
+  { name: 'Alchemia', glyph: '⚗️', cats: ['eliksir', 'olej', 'wywar', 'katalizator'] },
+  { name: 'Wyposażenie', glyph: '⚔', cats: ['bron', 'pancerz', 'narzedzie'] },
+  { name: 'Obozowisko', glyph: '🔥', cats: ['konstrukcja'] },
+  { name: 'Prowiant i skarby', glyph: '🍞', cats: ['jedzenie', 'artefakt', 'inne'] },
+];
+
 const Bag = {
   filter: 'all',
   combineFrom: null,
@@ -6,28 +14,71 @@ const Bag = {
 
   render(body) {
     const inv = Game.state.inventory;
-    const cats = [...new Set(inv.map(i => i.category))];
+    const order = Object.keys(CAT_NAMES);
+    const rank = c => { const i = order.indexOf(c); return i < 0 ? 999 : i; };
+    const cats = [...new Set(inv.map(i => i.category))].sort((a, b) => rank(a) - rank(b));
     body.append(h('p', { class: 'hint' }, 'Przeciągnij przedmiot na inny (na telefonie: przytrzymaj i przeciągnij), żeby sprawdzić, co z nich powstanie. Dotknij, żeby obejrzeć.'));
     if (this.combineFrom) {
       const it = inv.find(i => i.id === this.combineFrom);
       body.append(h('div', { class: 'card row' }, g(it?.glyph), h('span', {}, `Łączysz: ${it?.name}. Wybierz drugi przedmiot.`),
         h('span', { class: 'spacer' }), h('button', { class: 'btn small', onclick: () => { this.combineFrom = null; Sheet.refresh(); } }, 'Anuluj')));
     }
+    if (this.filter !== 'all' && !cats.includes(this.filter)) this.filter = 'all';
     const f = h('div', { class: 'filters' },
       h('button', { class: 'chip' + (this.filter === 'all' ? ' on' : ''), onclick: () => { this.filter = 'all'; Sheet.refresh(); } }, `Wszystko (${inv.length})`),
-      cats.map(c => h('button', { class: 'chip' + (this.filter === c ? ' on' : ''), onclick: () => { this.filter = c; Sheet.refresh(); } }, CAT_NAMES[c] || c)));
+      cats.map(c => h('button', { class: 'chip' + (this.filter === c ? ' on' : ''), onclick: () => { this.filter = c; Sheet.refresh(); } },
+        `${CAT_NAMES[c] || c} ${inv.filter(i => i.category === c).length}`)));
     body.append(f);
-    const grid = h('div', { class: 'inv-grid' });
-    const shown = inv.filter(i => this.filter === 'all' || i.category === this.filter)
-      .sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name));
-    for (const it of shown) {
-      const s = h('div', { class: `slot r-${it.rarity}${this.combineFrom === it.id ? ' selected' : ''}`, 'data-item': it.id, title: it.name },
-        h('span', { class: 'n' }, it.name), g(it.glyph), h('span', { class: 'q' }, it.qty));
-      this.bindDrag(s, it);
-      grid.append(s);
+    if (!inv.length) {
+      body.append(h('div', { class: 'muted' }, 'Pusto. Idź do lasu, na łąkę albo nad rzekę.'));
+      return;
     }
-    if (!shown.length) grid.append(h('div', { class: 'muted' }, 'Pusto. Idź do lasu, na łąkę albo nad rzekę.'));
-    body.append(grid);
+    const slots = list => {
+      const grid = h('div', { class: 'inv-grid' });
+      for (const it of list.sort((a, b) => a.name.localeCompare(b.name, 'pl'))) {
+        const s = h('div', { class: `slot r-${it.rarity}${this.combineFrom === it.id ? ' selected' : ''}`, 'data-item': it.id, title: it.name },
+          h('span', { class: 'n' }, it.name), g(it.glyph), h('span', { class: 'q' }, it.qty));
+        this.bindDrag(s, it);
+        grid.append(s);
+      }
+      return grid;
+    };
+    if (this.filter !== 'all') {
+      body.append(slots(inv.filter(i => i.category === this.filter)));
+      return;
+    }
+    // Wszystko: grupy główne → sekcje kategorii
+    let closed = {};
+    try { closed = JSON.parse(Store.get('navia_bag_closed') || '{}') || {}; } catch (e) { /* */ }
+    const used = new Set();
+    for (const grp of BAG_GROUPS) {
+      const inGroup = cats.filter(c => grp.cats.includes(c));
+      inGroup.forEach(c => used.add(c));
+      if (!inGroup.length) continue;
+      body.append(h('div', { class: 'bag-group' }, g(grp.glyph), ' ', grp.name));
+      for (const c of inGroup) this.section(body, c, inv.filter(i => i.category === c), closed, slots);
+    }
+    const rest = cats.filter(c => !used.has(c));
+    if (rest.length) {
+      body.append(h('div', { class: 'bag-group' }, g('◇'), ' Pozostałe'));
+      for (const c of rest) this.section(body, c, inv.filter(i => i.category === c), closed, slots);
+    }
+  },
+
+  section(body, cat, list, closed, slots) {
+    const total = list.reduce((a, i) => a + i.qty, 0);
+    const isClosed = !!closed[cat];
+    const head = h('button', { class: 'bag-sec' + (isClosed ? ' closed' : ''), onclick: () => {
+      closed[cat] = !closed[cat];
+      if (!closed[cat]) delete closed[cat];
+      Store.set('navia_bag_closed', JSON.stringify(closed));
+      Sheet.refresh();
+    } },
+    h('span', { class: 'bs-arrow' }, isClosed ? '▸' : '▾'),
+    h('span', { class: 'bs-name' }, CAT_NAMES[cat] || cat),
+    h('span', { class: 'bs-count' }, `${list.length} ${plural(list.length, 'rodzaj', 'rodzaje', 'rodzajów')} · ${total} szt.`));
+    body.append(head);
+    if (!isClosed) body.append(slots(list));
   },
 
   // ----------------------------------------------------------- przeciąganie (mysz + dotyk)
