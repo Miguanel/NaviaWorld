@@ -26,6 +26,8 @@ Jeśli chcesz zacząć od zera, usuń plik `instance/navia.db`.
 
 Testy uruchomisz poleceniem `python tests/test_flow.py`. Używają osobnej, tymczasowej bazy.
 
+Po zmianie wymagań zainstaluj je ponownie: `pip install -r requirements.txt`. Lista zawiera `gunicorn` i `psycopg` dla serwera na Render, ale lokalnie nic nie trzeba konfigurować.
+
 ## Klucz do mapy (CARTO)
 
 Od września 2026 kafelki CARTO wymagają **darmowego klucza** — bez niego na mapie widać napis „API KEY REQUIRED”.
@@ -40,10 +42,52 @@ Limity CARTO: użytek niekomercyjny do 5 mln kafelków miesięcznie, komercyjny 
 ## Gra na telefonie
 
 - Telefon i komputer muszą być w tej samej sieci Wi-Fi. Na telefonie wejdź na `http://<IP-komputera>:5000`. IP sprawdzisz w Windows poleceniem `ipconfig`.
+- Po wdrożeniu na Render gra ma od razu adres https, więc GPS na telefonie działa bez kombinowania (patrz niżej).
 - **GPS w przeglądarce działa tylko przez HTTPS** (oraz na `localhost`). Masz dwie możliwości:
   - `pip install pyopenssl`, potem `python app.py --https`. Przeglądarka ostrzeże o certyfikacie, wtedy wybierz „Zaawansowane → Przejdź”;
   - albo tunel, np. `cloudflared tunnel --url http://localhost:5000` lub `ngrok http 5000`. Dostajesz prawdziwy adres https.
 - **Instalacja jako aplikacja (PWA):** w Chrome na Androidzie otwórz menu ⋮ i wybierz „Zainstaluj aplikację”. Na iPhonie w Safari: Udostępnij → „Do ekranu początkowego”. Gra ma ikonę, ekran startowy i działa w trybie pełnoekranowym.
+
+## Wdrożenie na Render (gra w internecie)
+
+Projekt zawiera gotowy plik **`render.yaml`**: serwis WWW z grą i API oraz darmową bazę PostgreSQL w regionie Frankfurt.
+
+### 1. Wrzuć projekt na GitHuba
+W PyCharm: **VCS → Share Project on GitHub** albo w terminalu:
+```
+git init
+git add .
+git commit -m "Cienie Navii"
+git branch -M main
+git remote add origin https://github.com/<twoj-login>/cienie-navii.git
+git push -u origin main
+```
+Plik `.gitignore` pomija `venv/` i lokalną bazę `instance/`, więc na GitHuba nie trafią hasła graczy z Twojego komputera.
+
+### 2. Utwórz usługi z Blueprintu
+1. Na https://dashboard.render.com wybierz **New → Blueprint** i wskaż repozytorium.
+2. Render przeczyta `render.yaml` i zapyta o dwie wartości:
+   - **NAVIA_ADMIN_PASS** — hasło konta admina `migu` na serwerze. Daj inne niż lokalnie.
+   - **NAVIA_MAP_KEY** — klucz CARTO. Możesz najpierw zostawić puste i dodać go później w *Environment*.
+3. Kliknij **Apply**. Po kilku minutach gra działa pod adresem `https://cienie-navii.onrender.com`. Dokładny adres zobaczysz w panelu.
+4. Teraz wygeneruj na CARTO klucz produkcyjny ograniczony do tego adresu i wklej go w **Environment → NAVIA_MAP_KEY**.
+
+Każdy `git push` na gałąź `main` automatycznie wdraża nową wersję.
+
+### Jak działa „aplikacja + budzenie serwera”
+- Darmowy serwis na Render **zasypia po 15 minutach** bez ruchu. Budzi się przy pierwszym wejściu, zwykle w mniej niż minutę.
+- Gra jest aplikacją PWA. Po instalacji (⇩ na mapie albo Postać → Zainstaluj aplikację) jej szkielet, czyli wygląd, skrypty i ikony, ładuje się **od razu z pamięci telefonu**. W tym czasie aplikacja sama odpytuje `/api/health` i pokazuje ekran **„Budzenie świata”**. Grę odsłania dopiero wtedy, gdy serwer i baza odpowiadają.
+- W trakcie gry aplikacja co kilka minut daje znać serwerowi, że ktoś gra, więc serwer nie zaśnie. Po powrocie do aplikacji, np. po godzinie w kieszeni, sama sprawdza, czy serwer nie zasnął, i w razie potrzeby go budzi.
+- Jeśli chcesz, żeby serwer **nie zasypiał wcale**, ustaw darmowe pingowanie adresu `https://<twoja-gra>.onrender.com/api/health` co 10 minut, np. w UptimeRobot albo cron-job.org. Jeden serwis działający bez przerwy mieści się w 750 darmowych godzinach miesięcznie.
+
+### Baza danych na Render — ważne
+- Darmowa baza PostgreSQL ma 1 GB, czyli dużo jak na tę grę. **Wygasa jednak 30 dni po utworzeniu.** Potem jest jeszcze 14 dni na przejście na płatny plan, a po tym czasie Render ją usuwa.
+- Zanim minie 30 dni, wejdź w **Panel admina → Eksport / import → „Pełna kopia (z graczami)”**. Następnie utwórz nową darmową bazę, podłącz ją w zmiennej `DATABASE_URL` i zaimportuj plik. Konta, postacie, ekwipunek i siedliska wrócą na swoje miejsca.
+- Druga droga to płatny plan bazy, który nie wygasa.
+- Darmowa baza nie ma automatycznych kopii zapasowych, dlatego pełną kopię warto pobierać regularnie.
+
+### Lokalnie bez zmian
+Na komputerze gra dalej używa pliku SQLite i `python app.py`. Bazy PostgreSQL używa tylko wtedy, gdy ustawisz zmienną `DATABASE_URL`.
 
 ## Tryb debug: strzałki zamiast chodzenia
 
@@ -53,7 +97,7 @@ W `navia/config.py` ustawienie `DEBUG_MOVEMENT = True` (domyślne) daje:
 - przycisk **⌖ GPS**, który włącza i wyłącza prawdziwą lokalizację;
 - krótszy czas odnowienia eksploracji i brak blokady „za szybkiego” ruchu.
 
-Na produkcji ustaw `NAVIA_DEBUG=0`.
+Na produkcji ustaw `NAVIA_DEBUG=0`. Plik `render.yaml` robi to sam. **Admin ma strzałki i teleport zawsze**, także na serwerze, więc możesz testować bez chodzenia.
 
 ---
 
@@ -118,9 +162,11 @@ Wywary przemiany zmieniają cechy **na zawsze**. Dodają toksyczność i niosą 
 
 ## Struktura projektu
 ```
-app.py                 – uruchomienie serwera
+app.py                 – uruchomienie serwera (lokalnie: python app.py, na Render: gunicorn app:app)
+render.yaml            – konfiguracja wdrożenia na Render (serwis + baza PostgreSQL)
 navia/config.py        – ustawienia (nazwa gry, energia, tryby, debug, OSM)
-navia/schema.sql       – schemat bazy SQLite
+navia/schema.sql       – schemat bazy (SQLite; dla PostgreSQL tłumaczony automatycznie)
+navia/db.py            – warstwa bazy: SQLite lokalnie, PostgreSQL gdy jest DATABASE_URL
 navia/seed.py          – treść startowa (przedmioty, receptury, potwory, zdarzenia…)
 navia/world.py         – generator świata, punkty mocy, OpenStreetMap
 navia/explore.py       – losowanie zdarzeń
@@ -137,5 +183,3 @@ tests/test_flow.py     – testy całej pętli gry
 ## Prawa autorskie
 Teksty w grze są oryginalne. Klimat wziął się z mitologii i demonologii słowiańskiej (strzygi, utopce, południce, leszy, bogowie: Perun, Weles, Mokosz, Swaróg), a wierzenia ludowe są dobrem wspólnym. W grze nie ma cytatów z powieści, nazw własnych ani znaków towarowych cudzych serii, więc cała treść należy do Ciebie i bezpiecznie ją zastrzeżesz.
 Mapa korzysta z danych © OpenStreetMap i kafelków © CARTO. Przy publikacji gry zostaw te podpisy, bo wymagają tego licencje.
-#   N a v i a W o r l d  
- 

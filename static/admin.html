@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Panel admina — Cienie Navii</title>
+  <meta name="theme-color" content="#0b0907">
+  <link rel="icon" href="/static/icons/icon.svg" type="image/svg+xml">
+  <link href="https://fonts.googleapis.com/css2?family=Alegreya+SC:wght@400;700&family=Alegreya:ital,wght@0,400;0,600;1,400&family=Cormorant+Unicase:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+  <link rel="stylesheet" href="/static/css/style.css">
+  <style>
+    body { overflow: auto; }
+    .adm { display: grid; grid-template-columns: 230px 1fr; min-height: 100vh; }
+    .adm-side { background: var(--soot); border-right: 1px solid var(--ash); padding: 16px 12px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
+    .adm-side h1 { font-size: 22px; display: flex; gap: 8px; align-items: center; }
+    .adm-side h1 svg { width: 34px; height: 34px; }
+    .adm-nav { display: flex; flex-direction: column; gap: 2px; margin-top: 10px; }
+    .adm-nav button { text-align: left; background: none; border: 1px solid transparent; padding: 9px 10px; border-radius: 6px; cursor: pointer; font-family: var(--f-sc); letter-spacing: .03em; color: var(--bone-dim); font-size: 15px; }
+    .adm-nav button:hover { color: var(--bone); border-color: var(--ash); }
+    .adm-nav button.on { color: var(--bone); background: rgba(163,38,26,.22); border-color: var(--blood); }
+    .adm-nav .sep { font-family: var(--f-sc); font-size: 11px; color: var(--gold); letter-spacing: .15em; margin: 14px 10px 4px; }
+    .adm-main { padding: 18px 22px 60px; min-width: 0; }
+    .adm-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+    .adm-head h2 { font-size: 30px; flex: 1; }
+    .split { display: grid; grid-template-columns: minmax(260px, 380px) 1fr; gap: 18px; align-items: start; }
+    .list { border: 1px solid var(--ash); border-radius: 8px; max-height: calc(100vh - 150px); overflow-y: auto; background: rgba(11,9,7,.5); }
+    .list-row { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-bottom: 1px solid rgba(59,50,41,.55); cursor: pointer; }
+    .list-row:hover { background: rgba(255,255,255,.03); }
+    .list-row.on { background: rgba(163,38,26,.2); }
+    .list-row .lg { font-size: 22px; width: 28px; text-align: center; }
+    .list-row .lt { flex: 1; min-width: 0; }
+    .list-row .lt b { display: block; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .list-row .lt small { color: var(--bone-faint); font-size: 12px; }
+    .editor { border: 1px solid var(--ash); border-radius: 8px; padding: 16px; background: rgba(11,9,7,.5); }
+    .editor h3 { font-size: 24px; margin-bottom: 4px; }
+    .fgrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 0 14px; }
+    .fgrid .wide { grid-column: 1 / -1; }
+    .rows { display: flex; flex-direction: column; gap: 6px; }
+    .rowed { display: flex; gap: 6px; align-items: center; }
+    .rowed input, .rowed select { min-height: 38px; padding: 6px 8px; }
+    .rowed .del { flex: none; width: 36px; height: 36px; border-radius: 6px; border: 1px solid var(--ash); background: none; cursor: pointer; color: #e0745f; }
+    .mods { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 6px; }
+    .mods label { margin: 0; display: flex; align-items: center; gap: 6px; font-size: 13px; }
+    .mods input { min-height: 34px; padding: 4px 8px; width: 80px; }
+    .checks { display: flex; flex-wrap: wrap; gap: 6px; }
+    .checks label { margin: 0; display: inline-flex; gap: 6px; align-items: center; border: 1px solid var(--ash); border-radius: 999px; padding: 4px 10px; color: var(--bone); cursor: pointer; }
+    .checks input { width: auto; min-height: 0; }
+    .boolf { display: flex; align-items: center; gap: 8px; margin-top: 30px; }
+    .boolf input { width: 20px; height: 20px; min-height: 0; }
+    textarea.json { font-family: ui-monospace, Consolas, monospace; font-size: 13px; min-height: 120px; }
+    .snips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px; }
+    .preview { border: 1px dashed var(--gold); border-radius: 8px; padding: 10px 12px; margin-top: 14px; font-size: 14px; }
+    .sticky-actions { position: sticky; bottom: 0; background: linear-gradient(0deg, var(--ink) 60%, transparent); padding: 14px 0 4px; display: flex; gap: 8px; flex-wrap: wrap; }
+    table.t { width: 100%; border-collapse: collapse; font-size: 14px; }
+    table.t th, table.t td { text-align: left; padding: 7px 8px; border-bottom: 1px solid rgba(59,50,41,.55); }
+    table.t th { font-family: var(--f-sc); color: var(--gold); font-weight: 400; letter-spacing: .05em; }
+    #amap { height: calc(100vh - 160px); border: 1px solid var(--ash); border-radius: 8px; }
+    .sim-grid { display: grid; grid-template-columns: minmax(260px, 360px) 1fr; gap: 18px; }
+    .slider-row { display: grid; grid-template-columns: 120px 1fr 44px; gap: 8px; align-items: center; font-size: 14px; padding: 2px 0; }
+    .slider-row input[type=range] { min-height: 0; padding: 0; accent-color: var(--blood); }
+    @media (max-width: 860px) {
+      .adm { grid-template-columns: 1fr; }
+      .adm-side { position: static; height: auto; }
+      .adm-nav { flex-direction: row; flex-wrap: wrap; }
+      .adm-nav .sep { width: 100%; }
+      .split, .sim-grid { grid-template-columns: 1fr; }
+      .list { max-height: 40vh; }
+    }
+  </style>
+</head>
+<body class="grain">
+<svg width="0" height="0" style="position:absolute"><defs>
+  <symbol id="emblem" viewBox="0 0 100 100">
+    <circle cx="50" cy="50" r="46" fill="#120e0a" stroke="#c9a24a" stroke-width="2"/>
+    <circle cx="50" cy="50" r="40" fill="none" stroke="#a3261a" stroke-width="1.2"/>
+    <clipPath id="emclip"><circle cx="50" cy="50" r="30"/></clipPath>
+    <g clip-path="url(#emclip)" fill="none" stroke="#e6d9bd" stroke-width="1.6">
+      <circle cx="50" cy="20" r="30"/><circle cx="76" cy="35" r="30"/><circle cx="76" cy="65" r="30"/>
+      <circle cx="50" cy="80" r="30"/><circle cx="24" cy="65" r="30"/><circle cx="24" cy="35" r="30"/>
+    </g>
+    <circle cx="50" cy="50" r="30" fill="none" stroke="#e6d9bd" stroke-width="1.6"/>
+    <circle cx="50" cy="50" r="3" fill="#a3261a"/>
+  </symbol>
+</defs></svg>
+<div class="adm">
+  <aside class="adm-side">
+    <h1><svg><use href="#emblem"/></svg> Panel admina</h1>
+    <div class="muted" style="font-size:13px;margin-top:4px">Zmiany działają w grze od razu.</div>
+    <nav class="adm-nav" id="nav"></nav>
+    <div class="ornament"></div>
+    <a class="btn small block" href="/">◂ Wróć do gry</a>
+  </aside>
+  <main class="adm-main" id="main"><p class="muted">Wczytuję…</p></main>
+</div>
+<div id="toasts" style="top:16px"></div>
+<div id="modal-root"></div>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script src="/static/js/api.js"></script>
+<script src="/static/js/ui.js"></script>
+<script src="/static/js/map.js"></script>
+<script src="/static/js/admin.js"></script>
+</body>
+</html>

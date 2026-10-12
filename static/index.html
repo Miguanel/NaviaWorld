@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <title>Cienie Navii</title>
+  <meta name="description" content="Mroczna, starosłowiańska gra MMORPG na GPS. Polowanie na demony, alchemia, przemiany.">
+  <meta name="theme-color" content="#0b0907">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="/static/icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Alegreya+SC:wght@400;700&family=Alegreya:ital,wght@0,400;0,600;1,400&family=Cormorant+Unicase:wght@500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body class="grain">
+
+<!-- symbol herbu (rozeta sześciopłatkowa — ludowy znak gromowy) -->
+<svg width="0" height="0" style="position:absolute">
+  <defs>
+    <symbol id="emblem" viewBox="0 0 100 100">
+      <circle cx="50" cy="50" r="46" fill="#120e0a" stroke="#c9a24a" stroke-width="2"/>
+      <circle cx="50" cy="50" r="40" fill="none" stroke="#a3261a" stroke-width="1.2"/>
+      <clipPath id="emclip"><circle cx="50" cy="50" r="30"/></clipPath>
+      <g clip-path="url(#emclip)" fill="none" stroke="#e6d9bd" stroke-width="1.6">
+        <circle cx="50" cy="20" r="30"/><circle cx="76" cy="35" r="30"/><circle cx="76" cy="65" r="30"/>
+        <circle cx="50" cy="80" r="30"/><circle cx="24" cy="65" r="30"/><circle cx="24" cy="35" r="30"/>
+      </g>
+      <circle cx="50" cy="50" r="30" fill="none" stroke="#e6d9bd" stroke-width="1.6"/>
+      <circle cx="50" cy="50" r="3" fill="#a3261a"/>
+      <g fill="#c9a24a"><circle cx="50" cy="7" r="1.6"/><circle cx="50" cy="93" r="1.6"/><circle cx="7" cy="50" r="1.6"/><circle cx="93" cy="50" r="1.6"/></g>
+    </symbol>
+    <symbol id="i-bag" viewBox="0 0 24 24"><path d="M6 8h12l1.2 12.2a1 1 0 0 1-1 1.1H5.8a1 1 0 0 1-1-1.1z M9 8V6a3 3 0 0 1 6 0v2" fill="none" stroke-width="1.6"/><path d="M9 13h6" stroke-width="1.6"/></symbol>
+    <symbol id="i-book" viewBox="0 0 24 24"><path d="M4 5.5A2.5 2.5 0 0 1 6.5 3H20v16H6.5A2.5 2.5 0 0 0 4 21.5z M4 5.5v16 M8 7h8 M8 10h6" fill="none" stroke-width="1.6"/></symbol>
+    <symbol id="i-fire" viewBox="0 0 24 24"><path d="M12 3c1 4 5 5.5 5 10a5 5 0 0 1-10 0c0-2 1-3.5 2-4.5 0 2 1 3 2 3 0-3-1-5 1-8.5z M5 21h14 M7 19l10 2 M17 19 7 21" fill="none" stroke-width="1.6"/></symbol>
+    <symbol id="i-hero" viewBox="0 0 24 24"><circle cx="12" cy="7" r="3.5" fill="none" stroke-width="1.6"/><path d="M5 21c.6-4.5 3.4-7 7-7s6.4 2.5 7 7 M12 14v7" fill="none" stroke-width="1.6"/></symbol>
+    <symbol id="i-scroll" viewBox="0 0 24 24"><path d="M7 4h11a2 2 0 0 1 2 2v1h-3 M7 4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7 M7 4a2 2 0 0 1 2 2v12 M10 9h6 M10 12h6 M10 15h4" fill="none" stroke-width="1.6"/></symbol>
+    <symbol id="i-eye" viewBox="0 0 48 48"><path d="M4 24c6-9 12.5-13 20-13s14 4 20 13c-6 9-12.5 13-20 13S10 33 4 24z" fill="none" stroke="#e6d9bd" stroke-width="2.4"/><circle cx="24" cy="24" r="7" fill="none" stroke="#e6d9bd" stroke-width="2.4"/><circle cx="24" cy="24" r="2.5" fill="#e6d9bd"/><path d="M24 2v5 M24 41v5 M2 24h0 M8 9l3 3 M40 9l-3 3" stroke="#c9a24a" stroke-width="2"/></symbol>
+    <symbol id="hunter" viewBox="0 0 100 140">
+      <path d="M50 10c-12 0-20 9-20 22 0 6 2 11 5 15l-12 8c-8 6-12 20-13 40l-2 40h84l-2-40c-1-20-5-34-13-40l-12-8c3-4 5-9 5-15 0-13-8-22-20-22z" fill="#1a130e" stroke="#c9a24a" stroke-width="1.5"/>
+      <path d="M30 32c0-14 9-24 20-24s20 10 20 24c-4-6-12-10-20-10s-16 4-20 10z" fill="#0b0907" stroke="#6f6555"/>
+      <circle cx="43" cy="36" r="2" fill="#d7802f"/><circle cx="57" cy="36" r="2" fill="#d7802f"/>
+      <path d="M78 20 L92 120" stroke="#a99b82" stroke-width="3"/><path d="M74 38h12" stroke="#c9a24a" stroke-width="3"/>
+    </symbol>
+  </defs>
+</svg>
+
+<!-- ============================= BUDZENIE SERWERA ============================= -->
+<section id="wake" class="hidden" aria-live="polite">
+  <div class="wake-card">
+    <svg class="emblem wake-emblem"><use href="#emblem"/></svg>
+    <h2 class="wake-title">Budzenie świata</h2>
+    <div class="wake-line" data-wake-line>Rozpalam ogniska w obozach…</div>
+    <div class="wake-bar"><i data-wake-bar></i></div>
+    <div class="wake-hint" data-wake-hint></div>
+    <button class="btn primary hidden" data-wake-retry>Spróbuj ponownie</button>
+  </div>
+</section>
+
+<!-- ============================= LOGOWANIE ============================= -->
+<section id="login" class="hidden">
+  <div class="login-card">
+    <svg class="emblem"><use href="#emblem"/></svg>
+    <h1 class="title" data-game-name>Cienie Navii</h1>
+    <div class="subtitle" data-game-subtitle>KRONIKA ŁOWCÓW ZMIERZCHU</div>
+    <div class="ornament"></div>
+    <p class="prologue">Kiedy stare bogi odeszły, zostawiły po sobie to, czego nie zdążyły zabrać: strzygi w kryptach, utopce w brodach i południce w żytach. Ktoś musi je policzyć. Ktoś musi wrócić z lasu.</p>
+    <form id="login-form" autocomplete="on">
+      <label for="lg-user">Imię łowcy</label>
+      <input id="lg-user" name="username" autocomplete="username" required minlength="3" maxlength="20">
+      <label for="lg-pass">Hasło</label>
+      <input id="lg-pass" name="password" type="password" autocomplete="current-password" required minlength="4">
+      <div class="login-actions">
+        <button class="btn primary" type="submit" data-act="login">Wejdź</button>
+        <button class="btn" type="button" data-act="register">Załóż konto</button>
+      </div>
+      <div class="err" id="login-err"></div>
+    </form>
+    <button class="btn ghost small hidden" id="install-btn" style="margin-top:8px">⇩ Zainstaluj na telefonie</button>
+  </div>
+</section>
+
+<!-- ============================= GRA ============================= -->
+<div id="map"></div>
+<div class="fog"></div>
+<div class="vignette"></div>
+
+<header id="hud" class="hidden">
+  <div class="hud-row">
+    <svg class="hud-emblem" data-open="char"><use href="#emblem"/></svg>
+    <div>
+      <div class="hud-name" id="h-name">—</div>
+      <div class="hud-lvl" id="h-lvl">poziom 1</div>
+    </div>
+    <div class="hud-coins" id="h-coins">0 gr</div>
+  </div>
+  <div class="bars">
+    <div class="bar hp"><i id="b-hp"></i><span id="t-hp">Zdrowie</span></div>
+    <div class="bar en"><i id="b-en"></i><span id="t-en">Energia</span></div>
+    <div class="bar vig"><i id="b-vig"></i><span id="t-vig">Wigor</span></div>
+    <div class="bar tox"><i id="b-tox"></i><span id="t-tox">Toksyny</span></div>
+    <div class="bar xp"><i id="b-xp"></i></div>
+  </div>
+  <div id="ctxbar"></div>
+</header>
+
+<div id="side" class="hidden">
+  <button class="round" id="btn-center" title="Pokaż mnie">◎</button>
+  <button class="round" id="btn-gps" title="GPS">⌖</button>
+  <button class="round" id="btn-teleport" title="Teleport kliknięciem (debug)">✥</button>
+  <button class="round" id="btn-admin" title="Panel admina">⚙</button>
+  <button class="round hidden" id="btn-install" title="Zainstaluj aplikację">⇩</button>
+</div>
+
+<div id="dpad" class="hidden">
+  <span></span><button data-move="n">▲</button><span></span>
+  <button data-move="w">◀</button><button class="step" id="dpad-step">25 m</button><button data-move="e">▶</button>
+  <span></span><button data-move="s">▼</button><span></span>
+</div>
+
+<div id="bottom" class="hidden">
+  <div id="nearby"></div>
+  <div class="explore-wrap">
+    <div style="flex:1;min-width:0">
+      <div class="modes" id="modes"></div>
+      <button class="omen-link" id="omen-link">Szepty okolicy — co może się wydarzyć?</button>
+    </div>
+    <button class="explore-btn" id="explore-btn" title="Eksploruj">
+      <svg viewBox="0 0 48 48"><use href="#i-eye"/></svg>
+      Eksploruj
+    </button>
+  </div>
+  <nav id="dock">
+    <button data-open="bag"><svg><use href="#i-bag"/></svg>Torba</button>
+    <button data-open="recipes"><svg><use href="#i-book"/></svg>Receptury</button>
+    <button data-open="camp"><svg><use href="#i-fire"/></svg>Obozowisko</button>
+    <button data-open="char"><svg><use href="#i-hero"/></svg>Postać<span class="badge hidden" id="stat-badge">!</span></button>
+    <button data-open="journal"><svg><use href="#i-scroll"/></svg>Kronika</button>
+  </nav>
+</div>
+
+<div class="scrim" id="scrim"></div>
+<section class="sheet" id="sheet">
+  <div class="sheet-head"><h2 id="sheet-title">—</h2><button class="x" id="sheet-close" aria-label="Zamknij">✕</button></div>
+  <div class="sheet-body" id="sheet-body"></div>
+</section>
+
+<div id="modal-root"></div>
+<div id="combat" class="hidden"></div>
+<div id="toasts"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script src="/static/js/api.js"></script>
+<script src="/static/js/ui.js"></script>
+<script src="/static/js/map.js"></script>
+<script src="/static/js/combat.js"></script>
+<script src="/static/js/bag.js"></script>
+<script src="/static/js/game.js"></script>
+</body>
+</html>

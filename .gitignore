@@ -1,0 +1,9 @@
+venv/
+.venv/
+__pycache__/
+*.pyc
+instance/
+.idea/workspace.xml
+*.db
+*.db-wal
+*.db-shm

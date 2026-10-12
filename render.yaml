@@ -1,0 +1,36 @@
+# Blueprint Render: serwis WWW (gra + API) i darmowa baza PostgreSQL.
+# Render → New → Blueprint → wybierz repozytorium z grą.
+services:
+  - type: web
+    name: cienie-navii
+    runtime: python
+    plan: free
+    region: frankfurt
+    buildCommand: pip install -r requirements.txt
+    # 1 proces (ważne: wspólna pamięć podręczna treści), kilka wątków na równoległych graczy
+    startCommand: gunicorn app:app --workers 1 --threads 8 --timeout 120 --bind 0.0.0.0:$PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: DATABASE_URL
+        fromDatabase:
+          name: cienie-navii-db
+          property: connectionString
+      - key: NAVIA_DEBUG          # 0 = prawdziwy GPS; strzałki i teleport ma tylko admin
+        value: "0"
+      - key: NAVIA_OSM            # prawdziwe kościoły, cmentarze, lasy z OpenStreetMap
+        value: "1"
+      - key: NAVIA_ADMIN_USER
+        value: migu
+      - key: NAVIA_ADMIN_PASS     # Render zapyta o hasło admina przy tworzeniu
+        sync: false
+      - key: NAVIA_MAP_KEY        # klucz CARTO ograniczony do adresu gry na onrender.com
+        sync: false
+
+databases:
+  - name: cienie-navii-db
+    plan: free
+    region: frankfurt
+    databaseName: navia
+    user: navia

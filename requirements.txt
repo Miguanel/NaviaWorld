@@ -1,0 +1,7 @@
+Flask>=3.0
+# serwer produkcyjny (Render) — lokalnie wystarczy `python app.py`
+gunicorn>=22.0
+# sterownik PostgreSQL, używany tylko gdy ustawiona jest zmienna DATABASE_URL
+psycopg[binary]>=3.1
+# opcjonalnie, do trybu --https (GPS na telefonie w sieci domowej):
+# pyopenssl
