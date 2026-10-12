@@ -153,7 +153,7 @@ def state_payload(ch, ctx=None):
             "stat_points": ch["stat_points"], "hp": round(ch["hp"], 1), "max_hp": d["max_hp"],
             "vigor": round(ch["vigor"], 1), "max_vigor": d["max_vigor"], "toxicity": round(ch["toxicity"], 1),
             "max_tox": d["max_tox"], "energy": round(ch["energy"], 2), "max_energy": config.ENERGY_MAX,
-            "energy_per_hour": config.ENERGY_PER_HOUR, "energy_per_meter": config.ENERGY_PER_METER,
+            "energy_per_hour": config.ENERGY_PER_HOUR, "vigor_per_meter": config.VIGOR_PER_METER,
             "coins": ch["coins"], "money": chm.money(ch["coins"]),
             "base_stats": ch["stats"], "stats": d["stats"], "mutations": ch["mutations"],
             "mutation_slots": d["mutation_slots"],
@@ -210,6 +210,7 @@ def get_config():
     return jsonify({"name": config.GAME_NAME, "subtitle": config.GAME_SUBTITLE, "debug": config.DEBUG_MOVEMENT,
                     "start": config.DEFAULT_START, "modes": config.EXPLORE_MODES,
                     "interact_radius": config.INTERACT_RADIUS_M, "camp_radius": config.CAMP_RADIUS_M,
+                    "build_reach": config.BUILD_REACH_M, "site_spread": config.SITE_MAX_SPREAD_M,
                     "stat_names": chm.STAT_NAMES, "tiles": config.map_tiles(),
                     "currency": {"names": config.CURRENCY, "per": config.GROSZE_PER_DOBROTA}})
 
@@ -249,18 +250,18 @@ def move():
         if world.dist_m(ch["lat"], ch["lng"], lat, lng) / dt > config.MAX_SPEED_MS:
             raise GameError("Poruszasz się za szybko — czyżby czary?")
     gained = 0.0
-    if ch["lat"] is not None and config.ENERGY_PER_METER > 0:
-        # energia za chodzenie: pomijamy drgania GPS, jazdę pojazdem i skoki/teleporty
+    if ch["lat"] is not None and config.VIGOR_PER_METER > 0 and not ch.get("combat"):
+        # wigor za chodzenie: pomijamy drgania GPS, jazdę pojazdem i skoki/teleporty
         step = world.dist_m(ch["lat"], ch["lng"], lat, lng)
         dt = max(0.5, t - (ch.get("last_move") or t - 1))
         if config.WALK_MIN_STEP_M <= step <= config.WALK_MAX_STEP_M and step / dt <= config.WALK_MAX_SPEED_MS:
-            before = ch["energy"]
-            ch["energy"] = min(config.ENERGY_MAX, ch["energy"] + step * config.ENERGY_PER_METER)
-            gained = ch["energy"] - before
+            before = ch["vigor"]
+            ch["vigor"] = min(chm.derived(ch)["max_vigor"], ch["vigor"] + step * config.VIGOR_PER_METER)
+            gained = ch["vigor"] - before
     if gained or not ch.get("last_move") or world.dist_m(ch["lat"] or lat, ch["lng"] or lng, lat, lng) >= config.WALK_MIN_STEP_M:
         ch["lat"], ch["lng"], ch["last_move"] = lat, lng, t
     world.ensure_osm(lat, lng)
-    return respond(ch, {"ok": True, "energy_gained": round(gained, 1)})
+    return respond(ch, {"ok": True, "vigor_gained": round(gained, 1)})
 
 
 @bp.get("/world")
@@ -275,10 +276,11 @@ def get_world():
     t = time.time()
     for cp in campm.active_camps(lat, lng, 2500):
         total = max(1, cp["expires_at"] - cp["created_at"])
-        n = query("SELECT COUNT(*) AS n FROM structures WHERE camp_id=?", (cp["id"],), one=True)["n"]
+        _, structs = campm.geometry(cp["lat"], cp["lng"], campm.camp_structs(cp["id"]))
         camps.append({"id": cp["id"], "owner": cp["owner_name"], "name": cp["name"], "lat": cp["lat"], "lng": cp["lng"],
                       "left_h": round((cp["expires_at"] - t) / 3600, 1), "fade": round((cp["expires_at"] - t) / total, 2),
-                      "own": cp["owner_id"] == ch["user_id"], "structures": n})
+                      "own": cp["owner_id"] == ch["user_id"], "radius": config.CAMP_RADIUS_M,
+                      "structures": [campm.structure_view(s) for s in structs]})
     players = []
     for p in query("SELECT user_id, name, level, lat, lng FROM characters WHERE last_seen>? AND user_id!=?",
                    (t - 600, ch["user_id"])):
@@ -286,8 +288,8 @@ def get_world():
             players.append({"name": p["name"], "level": p["level"], "lat": p["lat"], "lng": p["lng"]})
     bases = []
     for b in campm.bases_visible(ch["user_id"]):
-        rows = query("SELECT * FROM structures WHERE owner_id=? AND site='base'", (b["owner_id"],))
-        bases.append({**b, "structures": [campm.structure_view(s) for s in rows]})
+        _, structs = campm.geometry(b["lat"], b["lng"], campm.base_structs(b["owner_id"]))
+        bases.append({**b, "radius": config.CAMP_RADIUS_M, "structures": [campm.structure_view(s) for s in structs]})
     merchants = trade.merchants_near(lat, lng, 2500, viewer_id=ch["user_id"], with_stock=False)
     return jsonify({"zones": pl["zones"], "power": pl["power"], "buildings": pl["buildings"],
                     "camps": camps, "players": players, "bases": bases, "merchants": merchants})
@@ -432,7 +434,7 @@ def camp_feed():
 def structure_place():
     ch = _char()
     b = _body()
-    return respond(ch, {"messages": [campm.place_structure(ch, b.get("item"), b.get("where"))]})
+    return respond(ch, {"messages": [campm.place_structure(ch, b.get("item"), b.get("where"), b.get("lat"), b.get("lng"))]})
 
 
 @bp.post("/structure/pickup")
@@ -453,7 +455,23 @@ def structure_repair():
 @login_required
 def home_set():
     ch = _char()
-    return respond(ch, {"messages": [campm.set_home(ch)]})
+    b = _body()
+    return respond(ch, {"messages": [campm.set_home(ch, b.get("lat"), b.get("lng"))]})
+
+
+@bp.get("/site/<where>")
+@login_required
+def site_get(where):
+    ch = _char()
+    return jsonify(campm.site_view(ch, where, request.args.get("owner", type=int)))
+
+
+@bp.post("/site/move")
+@login_required
+def site_move():
+    ch = _char()
+    b = _body()
+    return respond(ch, {"messages": [campm.move_site(ch, b.get("where"), b.get("lat"), b.get("lng"))]})
 
 
 @bp.post("/home/invite")

@@ -5,7 +5,7 @@
  *   nigdy strona zastępcza hostingu wyświetlana, gdy serwer się budzi.
  * - Zapytania /api/ zawsze idą do sieci (świat jest na serwerze).
  */
-const VERSION = 'navia-v4';
+const VERSION = 'navia-v5';
 const SHELL = [
   '/', '/static/css/style.css', '/static/js/api.js', '/static/js/ui.js', '/static/js/map.js',
   '/static/js/combat.js', '/static/js/bag.js', '/static/js/finder.js', '/static/js/game.js', '/static/icons/icon.svg',

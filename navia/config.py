@@ -34,7 +34,10 @@ CELL_LNG = 0.0070
 VIEW_CELLS = 2            # ile komórek wokół gracza wysyłać na mapę
 
 INTERACT_RADIUS_M = 70    # z jakiej odległości można korzystać z budynku
-CAMP_RADIUS_M = 45        # zasięg obozu / bazy
+CAMP_RADIUS_M = 45        # zasięg centrum obozu / siedliska
+STRUCTURE_RADIUS_M = 18   # domyślny zasięg budynku w obozie (każdy przedmiot może mieć własny: area_radius)
+SITE_MAX_SPREAD_M = 250   # jak daleko od centrum można rozbudowywać obóz/siedlisko
+BUILD_REACH_M = 60        # jak daleko od siebie można postawić budynek
 CAMP_LIFETIME_H = 24      # ile godzin żyje nowy obóz
 CAMP_MAX_H = 72
 CAMP_COST = [{"item": "drewno", "qty": 4}]
@@ -43,13 +46,15 @@ HOME_MOVE_COOLDOWN_H = 0 if DEBUG_MOVEMENT else 24 * 7
 
 EXPLORE_COOLDOWN_S = 2 if DEBUG_MOVEMENT else 8
 
-# Energia eksploracji: osobny zasób, odnawia się co godzinę i za chodzenie.
+# Energia eksploracji: „paliwo” przycisku Eksploruj (koszt zależy od trybu), odnawia się co godzinę.
 ENERGY_MAX = 100
 ENERGY_PER_HOUR = 10
 ENERGY_START = 50
-ENERGY_PER_METER = float(os.environ.get("NAVIA_ENERGY_PER_M", "1"))  # +1 energii za każdy przebyty metr
+
+# Wigor: siły na zbieractwo, czary i ciężkie ciosy. Odnawia się sam, a chodzenie dodaje go szybciej.
+VIGOR_PER_METER = float(os.environ.get("NAVIA_VIGOR_PER_M", "1"))  # +1 wigoru za każdy przebyty metr
 WALK_MIN_STEP_M = 4        # mniejsze przesunięcia to drgania GPS — nie liczą się
-WALK_MAX_SPEED_MS = 8      # szybciej niż ~29 km/h = jazda (rower, auto) — bez energii
+WALK_MAX_SPEED_MS = 8      # szybciej niż ~29 km/h = jazda (rower, auto) — bez wigoru
 WALK_MAX_STEP_M = 200      # jednorazowo najwyżej tyle metrów (skoki GPS, teleport)
 
 # Waluta: 1 dobrota = 100 groszy. W bazie trzymamy wszystko w groszach.

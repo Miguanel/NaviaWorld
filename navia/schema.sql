@@ -66,6 +66,7 @@ CREATE TABLE IF NOT EXISTS items(
   catalyst_bonus REAL DEFAULT 0,
   placeable INTEGER DEFAULT 0,
   max_durability REAL DEFAULT 0,
+  area_radius REAL DEFAULT 18,
   decay_per_hour REAL DEFAULT 0,
   repair_cost TEXT DEFAULT '[]'
 );

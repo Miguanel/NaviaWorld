@@ -200,9 +200,9 @@ const Game = {
     $('#h-lvl').textContent = `poziom ${c.level} · ${c.xp}/${c.xp_next} PD`;
     $('#h-coins').textContent = money(c.coins);
     bar($('#b-hp'), c.hp, c.max_hp); $('#t-hp').textContent = `Zdrowie ${Math.round(c.hp)}/${c.max_hp}`;
-    bar($('#b-vig'), c.vigor, c.max_vigor); $('#t-vig').textContent = `Wigor ${Math.round(c.vigor)}/${c.max_vigor}`;
+    bar($('#b-vig'), c.vigor, c.max_vigor); $('#t-vig').textContent = `Wigor ${Math.round(c.vigor)}/${c.max_vigor} · +${c.vigor_per_meter}/m`;
     bar($('#b-tox'), c.toxicity, c.max_tox); $('#t-tox').textContent = `Toksyny ${Math.round(c.toxicity)}/${c.max_tox}`;
-    bar($('#b-en'), c.energy, c.max_energy); $('#t-en').textContent = `Energia ${Math.floor(c.energy)}/${c.max_energy} · +${c.energy_per_hour}/h · +${c.energy_per_meter}/m`;
+    bar($('#b-en'), c.energy, c.max_energy); $('#t-en').textContent = `Energia ${Math.floor(c.energy)}/${c.max_energy} · +${c.energy_per_hour}/h`;
     bar($('#b-xp'), c.xp, c.xp_next);
     $('#stat-badge').classList.toggle('hidden', !c.stat_points);
   },
@@ -223,7 +223,7 @@ const Game = {
     if (typeof Finder !== 'undefined' && Finder.active) {
       const n = Finder.nearest();
       box.append(h('button', { class: 'chip trail', onclick: () => Finder.showLeads(Finder.active.res) },
-        g(Finder.active.item.glyph), ` ${Finder.active.item.name}${n ? ' · ' + (n.d < 30 ? 'tutaj' : fmtDist(n.d)) : ''}`));
+        g(Finder.active.item.glyph), ` ${Finder.active.item.name}${n ? ' · ' + (n.d < 30 ? 'tutaj' : `${fmtDist(n.d)} · ${Math.round(bearingDeg(this.pos[0], this.pos[1], n.l.lat, n.l.lng))}°`) : ''}`));
     }
     for (const e of this.state.char.effects.slice(0, 3)) {
       box.append(h('span', { class: 'chip', title: this.fmtStats(e.stats), style: { borderColor: 'var(--moss)' } }, '✧ ' + e.name));
@@ -238,7 +238,7 @@ const Game = {
       box.append(h('button', { class: 'chip building', onclick: () => this.openBuilding(b.id) }, g(b.glyph), `${b.name || b.kind_name} — wejdź`));
     }
     if (st.site.in_camp || st.site.at_base) {
-      box.append(h('button', { class: 'chip camp', onclick: () => this.openSheet('camp') }, '🔥 ', st.site.at_base ? 'Siedlisko' : 'Obóz'));
+      box.append(h('button', { class: 'chip camp', onclick: () => (st.site.at_own_base ? this.openSite('base') : st.site.my_camp ? this.openSite('camp') : this.openSheet('camp')) }, g(st.site.at_base ? '🏚️' : '🔥'), st.site.at_base ? ' Siedlisko' : ' Obóz'));
     }
     for (const gth of st.gathers) {
       const dis = !gth.has_tool || gth.cooldown_left > 0;
@@ -284,13 +284,13 @@ const Game = {
     try {
       const r = await API.post('/move', { lat: this.pos[0], lng: this.pos[1] });
       this.applyState(r.state, { silent: true });
-      if (r.result && r.result.energy_gained >= 1) this.energyBlip(r.result.energy_gained);
+      if (r.result && r.result.vigor_gained >= 1) this.vigorBlip(r.result.vigor_gained);
       if (!this.worldAt || distM(this.worldAt[0], this.worldAt[1], this.pos[0], this.pos[1]) > 250) this.loadWorld(true);
     } catch (e) { toast(e.message, 'err'); }
   },
 
-  energyBlip(n) {
-    const el = $('#t-en');
+  vigorBlip(n) {
+    const el = $('#t-vig');
     if (!el) return;
     const b = h('span', { class: 'energy-blip' }, `+${Math.round(n)}`);
     el.parentElement.append(b);
@@ -337,7 +337,101 @@ const Game = {
   },
 
   onMapClick(ll) {
+    if (this.pick) { const cb = this.pick; this.endPick(); cb(ll); return; }
     if (this.teleport && this.debugTools) { if (this.gps) this.stopGps(); this.setPosition(ll.lat, ll.lng); }
+  },
+
+  /** Tryb wskazywania miejsca na mapie (budowa, przenoszenie obozu) */
+  pickOnMap(text, cb) {
+    if (MapView.disabled) return toast('Mapa niedostępna.', 'err');
+    Modal.close(); Sheet.close();
+    this.pick = cb;
+    document.body.classList.add('picking');
+    const b = $('#pick-banner');
+    b.querySelector('[data-pick-text]').textContent = text;
+    b.querySelector('[data-pick-cancel]').onclick = () => this.endPick();
+    b.classList.remove('hidden');
+  },
+  endPick() {
+    this.pick = null;
+    document.body.classList.remove('picking');
+    $('#pick-banner').classList.add('hidden');
+  },
+
+  // ----------------------------------------------------------- obóz / siedlisko: plan i rozbudowa
+  async openSite(kind, owner) {
+    try {
+      const v = await API.get(`/site/${kind}` + (owner ? `?owner=${owner}` : ''));
+      if (!v) return toast(kind === 'camp' ? 'Nie masz rozbitego obozu.' : 'Brak siedliska.', 'err');
+      MapView.map && MapView.map.closePopup();
+      this.renderSite(v);
+    } catch (e) { toast(e.message, 'err'); }
+  },
+
+  async siteAction(path, body, v) {
+    try {
+      const r = await API.post(path, body);
+      this.applyState(r.state, { silent: true });
+      toastAll(r.result.messages, 'good');
+      await this.loadWorld();
+      if (v) this.openSite(v.type, v.type === 'base' ? v.owner_id : undefined);
+    } catch (e) { toast(e.message, 'err'); }
+  },
+
+  renderSite(v) {
+    const isCamp = v.type === 'camp';
+    const own = isCamp || v.own;
+    const where = isCamp ? 'camp' : 'base';
+    const conn = v.structures.filter(s => s.connected).length;
+    const parts = [
+      h('div', { class: 'row' }, h('span', { style: { fontSize: '44px' } }, g(isCamp ? '🔥' : '🏚️')),
+        h('div', {}, h('div', { class: 'event-kicker' }, isCamp ? 'Twój obóz' : (v.own ? 'Twoje siedlisko' : 'Siedlisko gościnne')),
+          h('h2', { style: { fontSize: '26px' } }, v.name))),
+      h('p', { class: 'muted' }, (isCamp ? `Ogień dogaśnie za ${v.left_h} h. ` : '') +
+        `Centrum ma krąg ${v.radius} m. Połączonych budynków: ${conn} z ${v.structures.length}.`),
+      h('div', { class: 'octo-hint' }, 'Każdy budynek ma mały krąg. Jeśli styka się z centrum albo z innym połączonym budynkiem, ich obszary zlewają się w jedną „ośmiornicę” — w całym jej zasięgu korzystasz z każdego połączonego budynku. Budynek postawiony osobno działa tylko, gdy stoisz w jego kręgu.'),
+      h('div', { class: 'section-title' }, 'Budynki'),
+    ];
+    if (!v.structures.length) parts.push(h('p', { class: 'muted' }, 'Jeszcze nic tu nie stoi.'));
+    for (const s of v.structures) {
+      const cost = (s.repair_cost || []).map(r => `${this.content.items[r.item]?.name || r.item} ×${r.qty}`).join(', ');
+      const d = distM(this.pos[0], this.pos[1], s.lat, s.lng);
+      parts.push(h('div', { class: 'site-struct' },
+        h('span', { class: 'sg' }, g(s.glyph)),
+        h('div', {},
+          h('div', { class: 'row' }, h('strong', {}, s.name), h('span', { class: 'spacer' }),
+            h('span', { class: 'chip ' + (s.connected ? 'ok' : 'warn') }, s.connected ? 'połączony' : 'osobno')),
+          h('div', { class: 'row', style: { gap: '6px', marginTop: '4px' } }, h('div', { class: 'dur' }, h('i', { style: { width: s.pct + '%' } })),
+            h('span', { class: 'faint', style: { fontSize: '12px' } }, `${s.pct}% · krąg ${Math.round(s.radius)} m · ${fmtDist(d)} stąd`)),
+          h('div', { class: 'row wrap', style: { marginTop: '6px' } },
+            h('button', { class: 'btn small', onclick: () => this.siteAction('/structure/repair', { id: s.id }, v) }, 'Napraw' + (cost ? ` (${cost})` : '')),
+            own ? h('button', { class: 'btn small ghost', onclick: () => this.siteAction('/structure/pickup', { id: s.id }, v) }, 'Zabierz') : null,
+            h('button', { class: 'btn small ghost', onclick: () => { Modal.close(); MapView.follow = false; MapView.map.setView([s.lat, s.lng], 18); } }, 'Pokaż')))));
+    }
+    if (own) {
+      parts.push(h('div', { class: 'section-title' }, isCamp ? 'Rozbudowa obozu' : 'Rozbudowa siedliska'));
+      const placeable = this.state.inventory.filter(i => i.placeable);
+      if (!placeable.length) {
+        parts.push(h('p', { class: 'muted' }, 'Nie masz w torbie żadnego budynku. Wytwórz go w Księdze receptur: kamienne palenisko, stół zielarza, suszarnię, ołtarzyk Welesa, kocioł, kowadło…'),
+          h('button', { class: 'btn small', onclick: () => { Modal.close(); this.openSheet('recipes'); } }, 'Otwórz Księgę receptur'));
+      }
+      for (const it of placeable) {
+        parts.push(h('div', { class: 'row wrap', style: { padding: '6px 0', borderBottom: '1px solid rgba(59,50,41,.5)' } },
+          g(it.glyph), h('span', { style: { flex: 1 } }, `${it.name} ×${it.qty}`),
+          h('button', { class: 'btn small', onclick: () => this.siteAction('/structure/place', { item: it.id, where }, v) }, 'Postaw tutaj'),
+          h('button', { class: 'btn small', onclick: () => this.pickOnMap(`Wskaż, gdzie postawić: ${it.name} (do ${this.cfg.build_reach} m od ciebie).`,
+            ll => this.siteAction('/structure/place', { item: it.id, where, lat: ll.lat, lng: ll.lng }, v)) }, 'Wskaż na mapie')));
+      }
+      parts.push(h('div', { class: 'section-title' }, 'Przeniesienie'),
+        h('p', { class: 'muted', style: { marginTop: 0 } }, `Wszystkie budynki przeniosą się razem z ${isCamp ? 'obozem' : 'siedliskiem'}, zachowując układ.`),
+        h('div', { class: 'row wrap' },
+          h('button', { class: 'btn small', onclick: () => this.pickOnMap(`Wskaż nowe miejsce ${isCamp ? 'obozu' : 'siedliska'} na mapie.`,
+            ll => this.siteAction('/site/move', { where, lat: ll.lat, lng: ll.lng }, v)) }, '✥ Wskaż na mapie'),
+          h('button', { class: 'btn small ghost', onclick: () => this.siteAction('/site/move', { where, lat: this.pos[0], lng: this.pos[1] }, v) }, 'Przenieś tutaj')));
+      if (isCamp) parts.push(h('button', { class: 'btn small', style: { marginTop: '10px' }, onclick: () => this.siteAction('/camp/feed', {}, v) }, 'Dorzuć 2 drewna (+6 h)'));
+    }
+    parts.push(h('button', { class: 'btn ghost block', style: { marginTop: '14px' }, onclick: () => Modal.close() }, 'Zamknij'));
+    Modal.open(parts);
   },
 
   // ----------------------------------------------------------- eksploracja
@@ -578,6 +672,7 @@ const Game = {
         h('div', { class: 'row' }, h('span', { style: { fontSize: '28px' } }, '🔥'), h('div', {}, h('strong', {}, 'Twój obóz'),
           h('div', { class: 'muted', style: { fontSize: '13px' } }, `Ogień dogaśnie za ${camp.left_h} h · ${Math.round(d)} m stąd`))),
         h('div', { class: 'row', style: { marginTop: '10px' } },
+          h('button', { class: 'btn small primary', onclick: () => this.openSite('camp') }, 'Plan i rozbudowa'),
           h('button', { class: 'btn small', onclick: () => this.post('/camp/feed') }, 'Dorzuć 2 drewna (+6 h)'),
           h('button', { class: 'btn small ghost', onclick: () => { if (!MapView.disabled) MapView.map.setView([camp.lat, camp.lng], 17); Sheet.close(); } }, 'Pokaż na mapie'))));
     } else {
@@ -592,6 +687,7 @@ const Game = {
       h('p', { style: { margin: '0 0 8px' } }, home ? 'Twoje siedlisko jest dyskretne: widzisz je tylko ty i ci, których zaprosisz. Sprzęt postawiony tu z czasem niszczeje — naprawiaj go składnikami.' : 'Nie masz jeszcze siedliska. Wybierz miejsce — najlepiej dom.'),
       h('div', { class: 'row wrap' },
         h('button', { class: 'btn small', onclick: async () => { const r = await this.post('/home/set'); if (r) this.loadWorld(); } }, home ? 'Przenieś siedlisko tutaj' : 'Załóż siedlisko tutaj'),
+        home ? h('button', { class: 'btn small primary', onclick: () => this.openSite('base') }, 'Plan i rozbudowa') : null,
         home ? h('button', { class: 'btn small ghost', onclick: () => { if (!MapView.disabled) MapView.map.setView(home, 17); Sheet.close(); } }, 'Pokaż na mapie') : null)));
     if (home) {
       const inp = h('input', { placeholder: 'Imię łowcy do zaproszenia' });

@@ -19,6 +19,14 @@ const MapView = {
     this.map = L.map('map', { zoomControl: false, attributionControl: true, minZoom: 12, maxZoom: 19 })
       .setView([lat, lng], 16);
     MapView.addTiles(this.map);
+    // Obszary obozów/siedlisk w osobnych warstwach z przezroczystością całej warstwy —
+    // nakładające się kręgi zlewają się w jeden kształt („ośmiornicę”), bez ciemniejszych zakładek.
+    for (const [pane, op] of [['campArea', .26], ['baseArea', .22]]) {
+      this.map.createPane(pane);
+      this.map.getPane(pane).style.opacity = op;
+      this.map.getPane(pane).style.zIndex = 350;
+      this.map.getPane(pane).style.pointerEvents = 'none';
+    }
     for (const k of ['zones', 'power', 'buildings', 'camps', 'bases', 'merchants', 'players', 'trail']) {
       this.layers[k] = L.layerGroup().addTo(this.map);
     }
@@ -93,19 +101,22 @@ const MapView = {
     }
 
     for (const cp of w.camps) {
+      this.drawSite(cp, 'camp', this.layers.camps, '#d7802f', 'campArea');
       const m = L.marker([cp.lat, cp.lng], {
         icon: this.icon('🔥', 'camp', 34, `${cp.owner}${cp.own ? ' (twój)' : ''}`), opacity: .3 + .7 * Math.max(0, cp.fade),
-      }).bindPopup(`<h4>${esc(cp.name)}</h4><div class="muted">Rozpalił: ${esc(cp.owner)}</div>
-        <p style="margin:.4em 0">Ogień dogaśnie za ${cp.left_h} h. Konstrukcji: ${cp.structures}.</p>`);
+        zIndexOffset: 200,
+      });
+      if (cp.own) m.on('click', () => Game.openSite('camp'));
+      else m.bindPopup(`<h4>${esc(cp.name)}</h4><div class="muted">Rozpalił: ${esc(cp.owner)}</div>
+        <p style="margin:.4em 0">Ogień dogaśnie za ${cp.left_h} h. Budynków: ${cp.structures.length}.</p>`);
       m.addTo(this.layers.camps);
     }
 
     for (const b of w.bases) {
-      const list = (b.structures || []).map(s => `${s.glyph} ${esc(s.name)} — ${s.pct}%`).join('<br>') || 'Pusto. Postaw coś z torby.';
-      L.marker([b.lat, b.lng], { icon: this.icon('🏚️', 'base', 36, b.own ? 'Twoje siedlisko' : `Siedlisko ${b.owner_name}`) })
-        .bindPopup(`<h4>${b.own ? 'Twoje siedlisko' : 'Siedlisko ' + esc(b.owner_name)}</h4><div class="muted" style="margin-bottom:6px">Widoczne tylko dla zaproszonych.</div>${list}`)
+      this.drawSite(b, 'base', this.layers.bases, '#7ea4ad', 'baseArea');
+      L.marker([b.lat, b.lng], { icon: this.icon('🏚️', 'base', 36, b.own ? 'Twoje siedlisko' : `Siedlisko ${b.owner_name}`), zIndexOffset: 200 })
+        .on('click', () => Game.openSite('base', b.owner_id))
         .addTo(this.layers.bases);
-      L.circle([b.lat, b.lng], { radius: Game.cfg.camp_radius, color: '#7ea4ad', weight: 1, dashArray: '3 5', fillOpacity: .04, interactive: false }).addTo(this.layers.bases);
     }
 
     for (const p of w.players) {
@@ -118,6 +129,28 @@ const MapView = {
       const mk = L.marker([m.lat, m.lng], { icon: this.icon('🧺', 'merchant', 34, `${m.name}${m.own ? ' (twój)' : ''}`) })
         .addTo(this.layers.merchants);
       mk.on('click', () => Game.openMerchant(m.id));
+    }
+  },
+
+  /** Centrum + budynki: połączone tworzą wspólny obszar, odłączone mają własny słaby krąg. */
+  drawSite(site, kind, layer, color, pane) {
+    L.circle([site.lat, site.lng], { pane, radius: site.radius || Game.cfg.camp_radius, stroke: false, fillColor: color, fillOpacity: 1, interactive: false }).addTo(layer);
+    for (const s of site.structures || []) {
+      if (s.connected) {
+        L.circle([s.lat, s.lng], { pane, radius: s.radius, stroke: false, fillColor: color, fillOpacity: 1, interactive: false }).addTo(layer);
+      } else {
+        L.circle([s.lat, s.lng], { radius: s.radius, color, weight: 1, opacity: .7, dashArray: '2 5', fillColor: color, fillOpacity: .07, interactive: false }).addTo(layer);
+      }
+      const mk = L.marker([s.lat, s.lng], {
+        icon: L.divIcon({ className: '', iconSize: [26, 26], iconAnchor: [13, 13],
+          html: `<div class="mk struct${s.connected ? '' : ' loose'}${s.broken ? ' broken' : ''}" style="--pc:${color};width:26px;height:26px;font-size:14px"><i class="glyph">${esc(s.glyph)}</i></div>` }),
+        zIndexOffset: 100,
+      });
+      mk.bindPopup(`<h4>${esc(s.glyph)} ${esc(s.name)}</h4>
+        <div class="sc" style="color:${color}">${s.connected ? 'połączony z obszarem' : 'stoi osobno — działa tylko w swoim kręgu'}</div>
+        <p style="margin:.4em 0">Zasięg ${Math.round(s.radius)} m · wytrzymałość ${s.pct}%${s.broken ? ' — zniszczony!' : ''}</p>
+        <button class="btn small" onclick="Game.openSite('${kind}'${kind === 'base' ? ', ' + site.owner_id : ''})">Zarządzaj</button>`);
+      mk.addTo(layer);
     }
   },
 
@@ -141,7 +174,7 @@ const MapView = {
       const popup = `<h4>${esc(l.glyph || '')} ${esc(l.title)}</h4>
         <div class="sc" style="color:${color}">${esc(l.itemName || '')}</div>
         <p style="margin:.4em 0">${esc(l.detail)}</p>
-        <div class="muted">${dist < 30 ? 'Jesteś na miejscu.' : `${fmtDist(dist)} na ${directionName(deg)}`}${l.place ? ' · ' + esc(l.place) : ''}</div>
+        <div class="muted">${dist < 30 ? 'Jesteś na miejscu.' : `${fmtDist(dist)} na ${directionName(deg)} · azymut ${Math.round(deg)}°`}${l.place ? ' · ' + esc(l.place) : ''}</div>
         ${l.pct != null ? `<div class="muted">Szansa przy eksploracji tam: ~${l.pct}%</div>` : ''}
         ${l.night ? '<div class="muted">☾ Częściej nocą.</div>' : ''}${l.day_only ? '<div class="muted">☀ Tylko za dnia.</div>' : ''}
         <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap">

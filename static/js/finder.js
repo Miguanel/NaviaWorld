@@ -80,7 +80,23 @@ const Finder = {
     ]);
   },
 
-  setTrail(res, leads, fit = true) {
+  /** Kliknięcie składnika w recepturze: od razu strzałka do najbliższego miejsca, gdzie go zdobyć. */
+  async guide(itemId) {
+    let res;
+    try { res = await API.get('/find?item=' + encodeURIComponent(itemId)); } catch (e) { return toast(e.message, 'err'); }
+    if (!res.leads.length) return this.showLeads(res);
+    const pos = Game.pos;
+    const best = res.leads.map(l => ({ ...l, itemName: res.item.name, d: distM(pos[0], pos[1], l.lat, l.lng) }))
+      .sort((a, b) => a.d - b.d)[0];
+    Sheet.close();
+    this.setTrail(res, [best], true, false);
+    const deg = bearingDeg(pos[0], pos[1], best.lat, best.lng);
+    toast(best.d < 30
+      ? `${res.item.name}: jesteś na miejscu — ${best.title}.`
+      : `🧭 ${res.item.name}: ${best.title} — ${fmtDist(best.d)}, azymut ${Math.round(deg)}° (${directionName(deg)}).`, 'good');
+  },
+
+  setTrail(res, leads, fit = true, announce = true) {
     this.active = { item: res.item, leads, res };
     leads.forEach(l => { l.arrived = false; });
     Store.set('navia_trail', JSON.stringify({ item: res.item.id, res, leads }));
@@ -91,7 +107,7 @@ const Finder = {
       MapView.follow = false;
       MapView.map.fitBounds(L.latLngBounds(pts).pad(0.25), { maxZoom: 17 });
     }
-    toast(`Trop: ${res.item.name}. Idź za strzałką — dotknij jej, żeby zobaczyć dokąd prowadzi.`, 'good');
+    if (announce) toast(`Trop: ${res.item.name}. Idź za strzałką — dotknij jej, żeby zobaczyć dokąd prowadzi.`, 'good');
   },
 
   clear() {

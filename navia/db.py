@@ -306,6 +306,22 @@ def content_version():
     return _content_cache["version"]
 
 
+# Nowe kolumny w istniejących bazach (aktualizacje gry): (tabela, kolumna, typ z wartością domyślną)
+MIGRATIONS = [
+    ("items", "area_radius", "REAL DEFAULT 18"),
+]
+
+
+def migrate():
+    for table, col, typ in MIGRATIONS:
+        if col not in table_columns(table):
+            if IS_PG:
+                typ = re.sub(r"\bREAL\b", "DOUBLE PRECISION", typ)
+            get_db().execute(f"ALTER TABLE {table} ADD COLUMN {col} {typ}")
+            get_db().commit()
+            print(f"[navia] Migracja: dodano kolumnę {table}.{col}")
+
+
 def init_db(app):
     with app.app_context():
         db = get_db()
@@ -313,6 +329,7 @@ def init_db(app):
             schema = f.read()
         db.executescript(_pg_schema(schema) if IS_PG else schema)
         db.commit()
+        migrate()
         empty = db.execute("SELECT COUNT(*) FROM items").fetchone()[0] == 0
         if empty:
             from .seed import seed_all

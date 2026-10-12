@@ -234,13 +234,15 @@ const Recipes = {
     if (!isOpen) return el;
     if (r.description) el.append(h('p', { class: 'muted', style: { fontStyle: 'italic', margin: '8px 0 0' } }, r.description));
     el.append(h('div', { class: 'section-title' }, 'Składniki'),
-      h('div', { class: 'req' }, r.ingredients.map(i => i.have >= i.qty
-        ? h('span', { class: 'chip good' }, g(i.glyph), `${i.name} ${i.have}/${i.qty}`)
-        : h('button', { class: 'chip bad req-find', title: 'Gdzie to zdobyć?', onclick: () => Finder.search(i.item) }, g(i.glyph), `${i.name} ${i.have}/${i.qty} 🧭`))));
+      h('div', { class: 'req' }, r.ingredients.map(i => h('button', {
+        class: 'chip req-find ' + (i.have >= i.qty ? 'good' : 'bad'), title: 'Pokaż strzałkę do miejsca, gdzie to zdobyć',
+        onclick: () => Finder.guide(i.item),
+      }, g(i.glyph), `${i.name} ${i.have}/${i.qty} `, g('🧭')))),
+      h('div', { class: 'faint', style: { fontSize: '12px', marginTop: '4px' } }, 'Dotknij składnika — na mapie pojawi się strzałka do miejsca, gdzie go zdobędziesz.'));
     if (r.tools.length) {
       const where = { any: '', bag: ' (w torbie)', placed: ' (postawione)' }[r.tool_mode] || '';
       el.append(h('div', { class: 'section-title' }, 'Narzędzia' + where),
-        h('div', { class: 'req' }, r.tools.map(t => h(t.source ? 'span' : 'button', { class: 'chip ' + (t.source ? 'good' : 'bad req-find'), onclick: t.source ? null : () => Finder.search(t.item) }, g(t.glyph), t.name,
+        h('div', { class: 'req' }, r.tools.map(t => h('button', { class: 'chip req-find ' + (t.source ? 'good' : 'bad'), onclick: () => Finder.guide(t.item) }, g(t.glyph), t.name,
           t.source ? h('small', { class: 'muted' }, ' · ' + ({ bag: 'torba', placed: 'postawione', building: 'warsztat' }[t.source])) : ''))));
     }
     el.append(h('div', { class: 'section-title' }, 'Miejsce'),

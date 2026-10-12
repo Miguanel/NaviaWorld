@@ -147,8 +147,9 @@ Na mapie pojawiają się kolorowe strzałki wokół gracza. Dotknięcie strzałk
 - **Targowisko** to nowy budynek. W prawdziwym świecie pojawia się na rynkach, placach i przy ratuszach, czyli w centrach miast. Każdego dnia przyjeżdżają tam inni kupcy z innym towarem i innymi cenami. Są też stałe kramy i skup.
 - **Kram łowcy**: w Obozowisku możesz nająć kupca, który stanie tam, gdzie jesteś. Płacisz z góry z własnej sakiewki (domyślnie 50 gr za dzień, najwyżej 14 dni). Wykładasz towar z torby i ustalasz ceny. Inni gracze kupują przy kramie, a pieniądze trafiają do szkatuły, którą odbierasz w każdej chwili. Zwinięcie kramu oddaje niesprzedany towar i utarg.
 
-### Energia za chodzenie
-Każdy przebyty metr daje **+1 energii** (`ENERGY_PER_METER` w `config.py` albo zmienna `NAVIA_ENERGY_PER_M`). Gra pomija drgania GPS (poniżej 4 m), jazdę szybszą niż ok. 29 km/h oraz skoki i teleporty powyżej 200 m.
+### Energia i wigor
+- **Energia** to „paliwo” przycisku **Eksploruj**: każda eksploracja kosztuje 1–5 pkt zależnie od trybu, a odnawia się +10 pkt na godzinę.
+- **Wigor** to siły łowcy: zbieranie surowców, czary i potężne ciosy w walce. Odnawia się sam, a **każdy przebyty metr daje +1 wigoru** (`VIGOR_PER_METER` w `config.py` albo zmienna `NAVIA_VIGOR_PER_M`). Gra pomija drgania GPS (poniżej 4 m), jazdę szybszą niż ok. 29 km/h, skoki i teleporty powyżej 200 m oraz chodzenie w trakcie walki.
 
 ### Walka (turowa, jak w Pokémonach)
 W każdej turze wybierasz jedną z czterech opcji:
@@ -168,6 +169,16 @@ Kolejność w turze zależy od Zręczności i szybkości potwora. Potwory mają 
 
 ### Mutacje
 Wywary przemiany zmieniają cechy **na zawsze**. Dodają toksyczność i niosą ryzyko porażki, które rośnie, gdy przekroczysz limit toksyn. Liczba przemian zależy od poziomu postaci.
+
+### Rozbudowa obozu i siedliska („ośmiornica”)
+- Dotknij swojego obozu albo siedliska na mapie (albo w Obozowisku wybierz **Plan i rozbudowa**). Zobaczysz budynki i opcje rozbudowy.
+- Budynki (kamienne palenisko, stół zielarza, suszarnia, ołtarzyk Welesa, kocioł, kowadło) stawiasz **tam, gdzie stoisz**, albo **wskazujesz miejsce na mapie**: do 60 m od siebie i do 250 m od centrum.
+- Każdy budynek ma **mały krąg** (15–24 m; admin ustawia go w polu „Zasięg budynku”). Krąg centrum ma 45 m. Gdy krąg budynku styka się z centrum albo z innym połączonym budynkiem, ich obszary **zlewają się w jeden kształt** z odnóżami, czyli w „ośmiornicę”. W całym tym obszarze jesteś „w obozie” i korzystasz z każdego połączonego budynku.
+- Budynek postawiony osobno działa tylko wtedy, gdy stoisz w jego własnym kręgu. Żeby go połączyć, postaw coś pomiędzy.
+- **Przenoszenie:** „Wskaż na mapie” albo „Przenieś tutaj” przenosi cały obóz lub siedlisko w wybrane miejsce. Budynki przenoszą się razem z nim i zachowują układ.
+
+### Strzałka z Księgi receptur
+Dotknij składnika albo narzędzia w recepturze. Na mapie od razu pojawi się strzałka do najbliższego miejsca, gdzie go zdobędziesz, a gra poda odległość i **azymut** (np. „298 m, azymut 58°, północny wschód”).
 
 ### Obóz i siedlisko
 - **Obóz** budujesz z 4 drewna; potrzebne jest też krzesiwo w torbie. Widzą go wszyscy, podpisany Twoim imieniem. Po 24 h wygasa i na mapie stopniowo blednie. Drewno dorzucone do ogniska wydłuża mu życie.

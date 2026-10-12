@@ -493,3 +493,18 @@ button.chip.req-find { cursor: pointer; }
 @keyframes blip { from { transform: translateY(0); opacity: 1; } to { transform: translateY(-14px); opacity: 0; } }
 
 .scroll-card .sc.muted { white-space: nowrap; }
+
+/* --------------------------------------------------------------- rozbudowa obozu */
+#pick-banner { position: fixed; left: 50%; transform: translateX(-50%); top: calc(150px + var(--safe-t)); z-index: 9300;
+  background: rgba(19,16,12,.97); border: 1px solid var(--ember); border-radius: 10px; padding: 10px 12px; display: flex; gap: 10px;
+  align-items: center; box-shadow: 0 0 24px rgba(215,128,47,.4); width: min(92vw, 440px); font-size: 14.5px; }
+#pick-banner span { flex: 1; }
+body.picking .leaflet-container { cursor: crosshair !important; }
+.mk.struct { border-color: var(--pc); box-shadow: 0 0 10px var(--pc); }
+.mk.struct.loose { opacity: .6; border-style: dashed; box-shadow: none; }
+.mk.struct.broken { filter: grayscale(1); opacity: .5; }
+.site-struct { display: grid; grid-template-columns: 30px 1fr; gap: 8px; padding: 9px 0; border-bottom: 1px solid rgba(59,50,41,.5); }
+.site-struct .sg { font-size: 22px; text-align: center; }
+.chip.ok { border-color: #4f6a35; color: #b9d38a; }
+.chip.warn { border-color: #7a5a20; color: #e0b46a; }
+.octo-hint { font-size: 13.5px; color: var(--bone-dim); background: rgba(215,128,47,.07); border: 1px dashed rgba(215,128,47,.4); border-radius: 8px; padding: 9px 11px; margin: 8px 0; }

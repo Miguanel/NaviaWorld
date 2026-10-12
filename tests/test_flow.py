@@ -262,23 +262,29 @@ def test_money_format():
     assert chm.money(1250) == "12 dobrot 50 gr"
 
 
-def test_walking_energy():
+def test_walking_vigor():
     c, h, uid = client("Piechur")
     st = c.get("/api/state", headers=h).json["state"]["char"]
-    sql("UPDATE characters SET energy=10 WHERE user_id=?", (uid,))
     lat, lng = st["lat"], st["lng"]
     import time as _t
-    sql("UPDATE characters SET last_move=? WHERE user_id=?", (_t.time() - 30, uid))
-    r = c.post("/api/move", json={"lat": lat + 50 / 111320, "lng": lng}, headers=h)  # ~50 m pieszo
-    e = r.json["state"]["char"]["energy"]
-    assert 58 <= e <= 61, e
-    # drganie GPS (2 m) — bez energii
-    r = c.post("/api/move", json={"lat": lat + 52 / 111320, "lng": lng}, headers=h)
-    assert abs(r.json["state"]["char"]["energy"] - e) < 0.5
-    # skok o 5 km — bez energii
-    sql("UPDATE characters SET energy=10 WHERE user_id=?", (uid,))
+    sql("UPDATE characters SET vigor=0, energy=10, last_move=? WHERE user_id=?", (_t.time() - 30, uid))
+    r = c.post("/api/move", json={"lat": lat + 25 / 111320, "lng": lng}, headers=h)  # ~25 m pieszo
+    ch = r.json["state"]["char"]
+    assert 24 <= ch["vigor"] <= 26.5, ch["vigor"]
+    assert ch["energy"] < 11  # energia nie rośnie od chodzenia
+    v = ch["vigor"]
+    # drganie GPS (2 m) — bez wigoru
+    r = c.post("/api/move", json={"lat": lat + 27 / 111320, "lng": lng}, headers=h)
+    assert abs(r.json["state"]["char"]["vigor"] - v) < 0.5
+    # skok o 5 km — bez wigoru
+    sql("UPDATE characters SET vigor=0 WHERE user_id=?", (uid,))
     r = c.post("/api/move", json={"lat": lat + 0.05, "lng": lng}, headers=h)
-    assert r.json["state"]["char"]["energy"] < 11
+    assert r.json["state"]["char"]["vigor"] < 1
+    # wigor nie przekracza maksimum
+    sql("UPDATE characters SET last_move=? WHERE user_id=?", (_t.time() - 60, uid))
+    r = c.post("/api/move", json={"lat": lat + 0.05 + 150 / 111320, "lng": lng}, headers=h)
+    ch = r.json["state"]["char"]
+    assert ch["vigor"] == ch["max_vigor"], ch
 
 
 def test_market_and_merchants_and_finder():
@@ -323,6 +329,54 @@ def test_market_and_merchants_and_finder():
     # tropiciel dla rzeczy z potworów
     f = buyer.get("/api/find?item=oko_nocnicy", headers=bh).json
     assert any(l["type"] == "hunt" for l in f["leads"]), f["leads"]
+
+
+def test_camp_octopus_and_move():
+    c, h, uid = client("Budowniczy")
+    st = c.get("/api/state", headers=h).json["state"]["char"]
+    lat0, lng0 = st["lat"], st["lng"]
+    M = 1 / 111320  # metr w stopniach szerokości
+    give(uid, "drewno", 4)
+    assert c.post("/api/camp/build", headers=h).status_code == 200
+    for it in ["stol_zielarski", "suszarnia", "kowadlo", "kociol_alchemiczny"]:
+        give(uid, it)
+
+    def place(item, dn):
+        c.post("/api/move", json={"lat": lat0 + dn * M, "lng": lng0}, headers=h)
+        r = c.post("/api/structure/place", json={"item": item, "where": "camp"}, headers=h)
+        assert r.status_code == 200, r.json
+        return r.json["result"]["messages"][0]
+
+    assert "łączy się" in place("stol_zielarski", 55)   # styka się z centrum (45 + 18)
+    assert "łączy się" in place("suszarnia", 85)        # styka się ze stołem (18 + 15)
+    assert "osobno" in place("kowadlo", 200)            # za daleko — odłączone
+    # na końcu „odnóża” (90 m od centrum) wciąż jesteś w obozie
+    r = c.post("/api/move", json={"lat": lat0 + 92 * M, "lng": lng0}, headers=h)
+    assert r.json["state"]["site"]["in_camp"], "koniec odnóża powinien należeć do obozu"
+    names = {s["item_id"] for s in r.json["state"]["structures"]}
+    assert {"stol_zielarski", "suszarnia"} <= names and "kowadlo" not in names
+    # przy odłączonym kowadle: działa tylko ono, ale to nie obszar obozu
+    r = c.post("/api/move", json={"lat": lat0 + 200 * M, "lng": lng0}, headers=h)
+    assert not r.json["state"]["site"]["in_camp"]
+    assert {s["item_id"] for s in r.json["state"]["structures"]} == {"kowadlo"}
+    # budowanie za daleko od siebie albo od centrum
+    r = c.post("/api/structure/place", json={"item": "kociol_alchemiczny", "where": "camp", "lat": lat0, "lng": lng0}, headers=h)
+    assert r.status_code == 400
+    # widok obozu i przeniesienie razem z budynkami
+    v = c.get("/api/site/camp", headers=h).json
+    assert len(v["structures"]) == 3 and sum(s["connected"] for s in v["structures"]) == 2
+    r = c.post("/api/site/move", json={"where": "camp", "lat": lat0 + 0.01, "lng": lng0 + 0.01}, headers=h)
+    assert r.status_code == 200, r.json
+    v2 = c.get("/api/site/camp", headers=h).json
+    assert abs(v2["lat"] - (lat0 + 0.01)) < 1e-9
+    s1 = {s["item_id"]: s for s in v["structures"]}
+    for s in v2["structures"]:
+        assert abs(s["lat"] - s1[s["item_id"]]["lat"] - 0.01) < 1e-9
+    # siedlisko: wskazanie na mapie przenosi budynki
+    assert c.post("/api/home/set", headers=h).status_code == 200
+    r = c.post("/api/site/move", json={"where": "base", "lat": lat0 + 0.02, "lng": lng0}, headers=h)
+    assert r.status_code == 200, r.json
+    assert abs(r.json["state"]["char"]["home"][0] - (lat0 + 0.02)) < 1e-9
 
 
 if __name__ == "__main__":
