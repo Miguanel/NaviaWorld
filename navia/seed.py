@@ -4,7 +4,7 @@ Teksty są oryginalne — klimat zaczerpnięty z mitologii i demonologii słowia
 (wierzenia ludowe są dobrem wspólnym), bez cytatów z cudzych powieści, żeby gra
 pozostała w całości Twoja.
 """
-from .db import upsert
+from .db import dumps, execute, upsert
 
 # --------------------------------------------------------------------------- TERENY
 TERRAINS = [
@@ -159,31 +159,49 @@ ITEMS = [
     it("alembik", "Alembik", "narzedzie", "⚗️", "Szklana bania z miedzianą rurką. Z wywaru wyciąga duszę.", 60, "niepospolity", is_tool=1, tool_bonus=6),
     # Konstrukcje stawiane w obozie / bazie
     it("ognisko_kamienne", "Kamienne palenisko", "konstrukcja", "🔥", "Krąg z kamieni wokół żaru. Na nim upieczesz rybę i wypalisz szkło.", 10,
-       is_tool=1, area_radius=16, placeable=1, max_durability=100, decay_per_hour=2.5, repair_cost=[{"item": "drewno", "qty": 2}, {"item": "kamien", "qty": 1}]),
+       is_tool=1, area_radius=16, placeable=1, max_durability=100, decay_per_hour=2.5, repair_cost=[{"item": "drewno", "qty": 2}, {"item": "kamien", "qty": 1}],
+       uses=[{"label": "Ogrzej się przy ogniu", "glyph": "♨", "heal": 20, "vigor": 10, "cooldown_s": 600, "wear": 1,
+              "text": "Wyciągasz zgrabiałe dłonie do żaru. Ciepło wraca do kości."}]),
     it("kociol_alchemiczny", "Kocioł alchemiczny", "konstrukcja", "🫕", "Żeliwny kocioł na trójnogu. Bez niego żaden wywar przemiany nie wyjdzie.", 70,
        "niepospolity", is_tool=1, tool_bonus=8, area_radius=18, placeable=1, max_durability=150, decay_per_hour=1.5,
-       repair_cost=[{"item": "ruda_zelaza", "qty": 1}, {"item": "wegiel", "qty": 1}]),
+       repair_cost=[{"item": "ruda_zelaza", "qty": 1}, {"item": "wegiel", "qty": 1}],
+       uses=[{"label": "Wdychaj opary szałwii", "glyph": "♒", "cost": [{"item": "szalwia", "qty": 1}], "toxicity": -25,
+              "cooldown_s": 900, "wear": 2, "text": "Wrzucasz szałwię do wrzątku i pochylasz się nad kotłem. Pot spływa, a z nim trucizna."}]),
     it("stol_zielarski", "Stół zielarza", "konstrukcja", "🪵", "Dębowy blat poznaczony sokami ziół. Przy nim wszystko idzie sprawniej.", 30,
        is_tool=1, tool_bonus=10, area_radius=18, placeable=1, max_durability=120, decay_per_hour=1.0,
-       repair_cost=[{"item": "drewno", "qty": 3}, {"item": "zywica", "qty": 1}]),
+       repair_cost=[{"item": "drewno", "qty": 3}, {"item": "zywica", "qty": 1}],
+       uses=[{"label": "Przebierz zioła", "glyph": "🔍", "cost": [{"item": "krwawnik", "qty": 1}],
+              "effect": {"name": "Oko zielarza", "stats": {"alchemia": 2}, "minutes": 45}, "cooldown_s": 1800,
+              "text": "Rozkładasz pęki na blacie i uczysz się ich na nowo — zapach, kolor, złamanie łodygi."}]),
     it("suszarnia", "Suszarnia ziół", "konstrukcja", "🌾", "Sznury i ramy pełne pęków ziół. Suszone zioła są mocniejsze.", 25,
        is_tool=1, tool_bonus=6, area_radius=15, placeable=1, max_durability=90, decay_per_hour=1.2,
-       repair_cost=[{"item": "drewno", "qty": 2}]),
+       repair_cost=[{"item": "drewno", "qty": 2}],
+       uses=[{"label": "Zdejmij susz", "glyph": "🌾", "cooldown_s": 7200, "wear": 1,
+              "loot": [{"item": "krwawnik", "chance": 0.6, "min": 1, "max": 2}, {"item": "bylica", "chance": 0.5, "min": 1, "max": 2},
+                       {"item": "szalwia", "chance": 0.5, "min": 1, "max": 2}, {"item": "piolun", "chance": 0.4, "min": 1, "max": 1},
+                       {"item": "dziurawiec", "chance": 0.3, "min": 1, "max": 1}],
+              "text": "Z ram zdejmujesz to, co zdążyło doschnąć. Szeleści jak stara księga."}]),
     it("oltarzyk", "Ołtarzyk Welesa", "konstrukcja", "🗿", "Kamień z wyrytą twarzą i miseczką na ofiary. Wywary przemiany lubią jego cień.", 40,
        "niepospolity", is_tool=1, tool_bonus=12, area_radius=24, placeable=1, max_durability=80, decay_per_hour=0.8,
-       repair_cost=[{"item": "kosc", "qty": 2}, {"item": "swieca", "qty": 1}]),
+       repair_cost=[{"item": "kosc", "qty": 2}, {"item": "swieca", "qty": 1}],
+       uses=[{"label": "Złóż ofiarę Welesowi", "glyph": "🕯️", "cost": [{"item": "kosc", "qty": 1}, {"item": "swieca", "qty": 1}],
+              "effect": {"name": "Łaska Welesa", "stats": {"moc": 2, "alchemia": 2}, "minutes": 60}, "cooldown_s": 3600,
+              "text": "Płomień gromnicy pochyla się w stronę kamiennej twarzy. Ktoś przyjął dar."}]),
     it("kowadlo", "Polowe kowadło", "konstrukcja", "⚒️", "Kowadło na pniaku i miech. Prawie jak kuźnia, tylko pod gołym niebem.", 90,
        "niepospolity", is_tool=1, tool_bonus=5, area_radius=20, placeable=1, max_durability=200, decay_per_hour=0.8,
-       repair_cost=[{"item": "ruda_zelaza", "qty": 2}]),
+       repair_cost=[{"item": "ruda_zelaza", "qty": 2}],
+       uses=[{"label": "Naostrz ostrze", "glyph": "🗡️", "cost": [{"item": "kamien", "qty": 1}],
+              "effect": {"name": "Naostrzone ostrze", "stats": {"sila": 2}, "minutes": 60}, "cooldown_s": 1800, "wear": 2,
+              "text": "Kamień śpiewa na stali. Ostrze przecina włos w locie."}]),
     # Broń i pancerze
-    it("kord", "Kord", "bron", "🗡️", "Krótki, prosty miecz wędrowca. Lepszy niż kij.", 25, effects={"attack": 3}),
-    it("topor", "Topór bojowy", "bron", "🪓", "Brodaty topór. Rozłupuje tarcze i czaszki.", 70, effects={"attack": 6}),
+    it("kord", "Kord", "bron", "🗡️", "Krótki, prosty miecz wędrowca. Lepszy niż kij.", 25, slot="weapon", effects={"attack": 3, "kind": "miecz"}),
+    it("topor", "Topór bojowy", "bron", "🪓", "Brodaty topór. Rozłupuje tarcze i czaszki.", 70, slot="weapon", effects={"attack": 6, "kind": "topor"}),
     it("srebrny_sztylet", "Srebrny sztylet", "bron", "🔪", "Ostrze z czystego srebra. Na ludzi za miękkie, na przeklętych — w sam raz.", 120,
-       "niepospolity", effects={"attack": 4, "tags": ["srebro"]}),
+       "niepospolity", slot="weapon", effects={"attack": 4, "tags": ["srebro"], "kind": "sztylet"}),
     it("miecz_gwiezdny", "Miecz z gwiezdnej rudy", "bron", "⚔️", "Kuty z kamienia, który spadł z nieba. Śpiewa, kiedy tnie.", 400, "legendarny",
-       effects={"attack": 10, "tags": ["srebro"]}),
-    it("przeszywanica", "Przeszywanica", "pancerz", "🧥", "Pikowany kaftan. Zatrzyma pazur, choć nie miecz.", 40, effects={"armor": 2}),
-    it("kolczuga", "Kolczuga", "pancerz", "⛓️", "Tysiące żelaznych kółek. Ciężka, ale żywi ją kochają.", 150, "niepospolity", effects={"armor": 5}),
+       slot="weapon", effects={"attack": 10, "tags": ["srebro"], "kind": "miecz"}),
+    it("przeszywanica", "Przeszywanica", "pancerz", "🧥", "Pikowany kaftan. Zatrzyma pazur, choć nie miecz.", 40, slot="chest", effects={"armor": 2}),
+    it("kolczuga", "Kolczuga", "pancerz", "⛓️", "Tysiące żelaznych kółek. Ciężka, ale żywi ją kochają.", 150, "niepospolity", slot="chest", effects={"armor": 5, "stats": {"zrecznosc": -1}}),
     # Jedzenie
     it("chleb", "Chleb", "jedzenie", "🍞", "Bochen razowego chleba. Kruszyna dla domowika, reszta dla ciebie.", 3, usable=1, effects={"heal": 10}),
     it("suszone_mieso", "Suszone mięso", "jedzenie", "🥩", "Twarde jak podeszwa, ale syci.", 5, usable=1, effects={"heal": 15, "vigor": 5}),
@@ -236,6 +254,90 @@ ITEMS = [
        "rzadki", usable=1, effects={"mutation": {"name": "Dębowe Serce", "stats": {"witalnosc": 3, "zrecznosc": -1}}, "toxicity": 60, "risk": 0.2}),
     it("wywar_trzeciego_oka", "Wywar Trzeciego Oka", "wywar", "🔮", "Wywar przemiany. Widzisz, jak zioła oddychają.", 160,
        "rzadki", usable=1, effects={"mutation": {"name": "Trzecie Oko", "stats": {"alchemia": 3}}, "toxicity": 50, "risk": 0.15}),
+    # Nowe konstrukcje obozowe
+    it("poslanie", "Posłanie ze skór", "konstrukcja", "🛏️", "Wilcze skóry na wiązce chrustu. Śpi się na tym lepiej niż w niejednej karczmie.", 30,
+       is_tool=1, area_radius=14, placeable=1, max_durability=80, decay_per_hour=1.2,
+       repair_cost=[{"item": "skora_wilka", "qty": 1}],
+       uses=[{"label": "Prześpij się", "glyph": "🌙", "heal": 60, "vigor": 30, "toxicity": -10, "cooldown_s": 3600, "wear": 3,
+              "text": "Zasypiasz przy dogasającym ogniu. Śni ci się coś, czego rano nie pamiętasz — i dobrze."}]),
+    it("beczka_deszczowka", "Beczka na deszczówkę", "konstrukcja", "🛢️", "Dębowa beczka pod rynną z kory. Woda w niej zawsze zimna.", 15,
+       area_radius=12, placeable=1, max_durability=100, decay_per_hour=0.6,
+       repair_cost=[{"item": "drewno", "qty": 2}],
+       uses=[{"label": "Zaczerpnij wody", "glyph": "💧", "cooldown_s": 1200,
+              "loot": [{"item": "woda_czysta", "chance": 1, "min": 2, "max": 3}],
+              "text": "Nabierasz bukłakiem zimnej deszczówki. Pachnie dachem i niebem."}]),
+    it("czestokol", "Częstokół", "konstrukcja", "🎍", "Rząd zaostrzonych pali. Niewiele chroni, ale łączy obóz w jedną całość — jego krąg sięga daleko.", 12,
+       area_radius=30, placeable=1, max_durability=140, decay_per_hour=0.7,
+       repair_cost=[{"item": "drewno", "qty": 2}]),
+    # Strój: broń
+    it("maczuga", "Maczuga", "bron", "🏏", "Dębowa pała nabita gwoździami. Nie trzeba umieć — wystarczy chcieć.", 18,
+       slot="weapon", effects={"attack": 4, "kind": "obuch"}),
+    it("wlocznia", "Włócznia", "bron", "🔱", "Jesionowe drzewce i liściasty grot. Trzyma bestię na dystans. Dwuręczna.", 55,
+       slot="weapon", effects={"attack": 8, "kind": "drzewcowa", "two_handed": True}),
+    it("berdysz", "Berdysz", "bron", "🪓", "Topór na długim drzewcu, z ostrzem jak półksiężyc. Dwuręczny — tnie jak kat.", 180, "niepospolity",
+       slot="weapon", effects={"attack": 12, "kind": "topor", "two_handed": True, "stats": {"zrecznosc": -1}}),
+    it("noz_mysliwski", "Nóż myśliwski", "bron", "🔪", "Krótki, szeroki nóż do skórowania. W drugiej ręce przydaje się bardziej, niż myślisz.", 15,
+       slot="weapon", effects={"attack": 2, "kind": "sztylet"}),
+    # Strój: tarcze
+    it("puklerz", "Puklerz", "tarcza", "🛡️", "Mała okrągła tarcza z żelaznym guzem. Odbija ciosy, nie zasłania widoku.", 30,
+       slot="shield", effects={"armor": 2, "stats": {"zrecznosc": 1}}),
+    it("tarcza_debowa", "Tarcza dębowa", "tarcza", "🛡️", "Deski dębowe obciągnięte skórą. Ciężka, ale pazur na niej się łamie.", 45,
+       slot="shield", effects={"armor": 4, "stats": {"zrecznosc": -1}}),
+    it("tarcza_okuta", "Okuta tarcza", "tarcza", "🛡️", "Żelazne okucia, umbo jak pięść. Wytrzyma i topór, i zęby.", 140, "niepospolity",
+       slot="shield", effects={"armor": 6, "stats": {"zrecznosc": -1, "odpornosc": 1}}),
+    # Strój: rękawice — każda zmienia broń trzymaną w tej samej ręce
+    it("rekawice_skorzane", "Skórzana rękawica", "rekawice", "🧤", "Miękka skóra, pewny chwyt. Każda broń leży w dłoni trochę lepiej.", 12,
+       slot="glove", effects={"armor": 0.5, "weapon_mods": {"attack_pct": 8}}),
+    it("rekawica_szermiercza", "Rękawica szermiercza", "rekawice", "🧤", "Cienka, z wzmocnionym kciukiem. Stworzona do pchnięć — miecz i sztylet tańczą w niej same.", 60, "niepospolity",
+       slot="glove", effects={"weapon_mods": {"attack_pct": 22, "crit": 4, "kinds": ["miecz", "sztylet"]}, "stats": {"zrecznosc": 1}}),
+    it("rekawica_kowalska", "Rękawica kowalska", "rekawice", "🥊", "Gruba, opalona iskrami. Z nią topór i obuch spadają jak młot na kowadło.", 45,
+       slot="glove", effects={"armor": 1, "weapon_mods": {"attack_pct": 20, "kinds": ["topor", "obuch"]}}),
+    it("rekawica_drzewcowa", "Rękawica z rzemieniem", "rekawice", "🧤", "Rzemień oplata nadgarstek i drzewce. Włócznia nie wyślizgnie się nawet we krwi.", 40,
+       slot="glove", effects={"weapon_mods": {"attack_pct": 25, "kinds": ["drzewcowa"]}}),
+    it("rekawica_srebrna", "Rękawica ze srebrną nicią", "rekawice", "🧤", "Srebrna nić wszyta w szwy. Każde ostrze, które w niej trzymasz, pali przeklętych jak srebro.", 120, "rzadki",
+       slot="glove", effects={"weapon_mods": {"attack": 1, "tags": ["srebro"]}}),
+    it("rekawica_kolcza", "Kolcza rękawica", "rekawice", "🧤", "Żelazne kółka na grzbiecie dłoni. Chroni, ale palce ruszają się ciężej.", 70, "niepospolity",
+       slot="glove", effects={"armor": 2, "weapon_mods": {"attack_pct": -5}, "stats": {"odpornosc": 1}}),
+    it("kastet_wilczy", "Wilczy kastet", "rekawice", "🐺", "Rękawica nabita wilczymi kłami. Bez broni w tej ręce — pięść gryzie jak bestia.", 35,
+       slot="glove", effects={"weapon_mods": {"attack": 5, "crit": 3, "kinds": ["piesc"]}}),
+    it("rekawica_zielarza", "Rękawica zielarza", "rekawice", "🧤", "Natłuszczona jeleniówka. Pokrzywa nie parzy, tojad nie wnika w skórę. Do walki marna.", 25,
+       slot="glove", effects={"weapon_mods": {"attack_pct": -10}, "stats": {"alchemia": 1}}),
+    it("rekawica_strzygi", "Rękawica strzygi", "rekawice", "🩸", "Uszyta ze skóry, która nie chce umrzeć. Broń w tej dłoni szuka krwi sama.", 300, "legendarny",
+       slot="glove", effects={"weapon_mods": {"attack_pct": 30, "crit": 6}, "stats": {"moc": -1}}),
+    # Strój: głowa, szyja, płaszcz
+    it("kaptur", "Kaptur łowcy", "pancerz", "🧢", "Szary kaptur z wełny. W cieniu kaptura wzrok wyostrza się na ruch.", 15,
+       slot="head", effects={"armor": 0.5, "stats": {"percepcja": 1}}),
+    it("wilczy_leb", "Wilczy łeb", "pancerz", "🐺", "Wyprawiona głowa wilka nałożona jak hełm. Ludzie schodzą z drogi, a ty czujesz się silniejszy.", 50, "niepospolity",
+       slot="head", effects={"armor": 1.5, "stats": {"sila": 1}}),
+    it("szyszak", "Żelazny szyszak", "pancerz", "⛑️", "Stożkowy hełm z nosalem. Ciężki i głuchy — ale czaszka zostaje w całości.", 90,
+       slot="head", effects={"armor": 3, "stats": {"percepcja": -1}}),
+    it("amulet_bursztyn", "Bursztynowy amulet", "bizuteria", "📿", "Bryłka bursztynu na rzemieniu. Ciepła, jakby żyła własnym słońcem.", 45, "niepospolity",
+       slot="neck", effects={"stats": {"moc": 2}}),
+    it("lunula", "Lunula", "bizuteria", "🌙", "Srebrny półksiężyc. Strzeże przed urokiem i złym okiem.", 90, "rzadki",
+       slot="neck", effects={"stats": {"odpornosc": 1, "witalnosc": 1}}),
+    it("plaszcz_wilczy", "Płaszcz z wilczej skóry", "pancerz", "🧥", "Ciężki, cuchnący, ciepły. Deszcz po nim spływa, a zimno nie ma dostępu.", 40,
+       slot="cloak", effects={"armor": 1, "stats": {"odpornosc": 1}}),
+    it("plaszcz_cienia", "Płaszcz cienia", "pancerz", "🌑", "Barwiony w odwarze z lulka i sadzy. W zmierzchu nie widać, gdzie kończy się on, a zaczyna noc.", 160, "rzadki",
+       slot="cloak", effects={"stats": {"zrecznosc": 2, "percepcja": 1}}),
+    # Strój: pas, nogi, stopy, pierścienie
+    it("pas_sakwy", "Pas z sakiewkami", "pancerz", "👝", "Pięć sakiewek na ziele, proszki i fiolki. Wszystko pod ręką, kiedy kocioł kipi.", 20,
+       slot="belt", effects={"stats": {"alchemia": 1}}),
+    it("pas_wojownika", "Pas wojownika", "pancerz", "🎗️", "Szeroki, nabijany ćwiekami. Trzyma kręgosłup prosto, a cios mocno.", 45,
+       slot="belt", effects={"armor": 0.5, "stats": {"sila": 1}}),
+    it("nogawice", "Skórzane nogawice", "pancerz", "👖", "Gruba skóra, łatana w kolanach. Kolce jeżyn i zęby szczurów zostają na zewnątrz.", 25,
+       slot="legs", effects={"armor": 1}),
+    it("nagolenniki", "Żelazne nagolenniki", "pancerz", "🦿", "Blachy przypięte rzemieniem. Utopiec nie chwyci za łydkę.", 80,
+       slot="legs", effects={"armor": 2.5, "stats": {"zrecznosc": -1}}),
+    it("lapcie", "Łapcie z łyka", "pancerz", "🥿", "Plecione z lipowego łyka. Lekkie, ciche — idziesz jak lis.", 6,
+       slot="feet", effects={"stats": {"zrecznosc": 1}}),
+    it("buty_skorzane", "Buty z cholewą", "pancerz", "🥾", "Wysokie, podbite gwoździami. Błoto, śnieg i kamienie — wszystko jedno.", 35,
+       slot="feet", effects={"armor": 1, "stats": {"witalnosc": 1}}),
+    it("pierscien_srebrny", "Srebrny pierścień", "bizuteria", "💍", "Gładka obrączka z czystego srebra. Złe sny omijają tego, kto ją nosi.", 60, "niepospolity",
+       slot="ring", effects={"stats": {"moc": 1, "odpornosc": 1}}),
+    it("pierscien_bursztyn", "Pierścień z bursztynem", "bizuteria", "💍", "W bursztynie zastygł listek. Zielarki mówią, że szepcze receptury.", 70, "niepospolity",
+       slot="ring", effects={"stats": {"alchemia": 2}}),
+    it("sygnet_lowcy", "Sygnet łowcy", "bizuteria", "💍", "Żelazny sygnet z wyrytym okiem. Dawny cech łowców nosił takie — widzieli więcej.", 50,
+       slot="ring", effects={"stats": {"percepcja": 2}}),
 ]
 
 
@@ -370,6 +472,57 @@ RECIPES = [
     rc("r_chleb", "Podpłomyk", "chleb", [("zboze", 2), ("woda_czysta", 1)], [], 80, station="camp", fail=None, xp=3),
     rc("r_miod_pitny", "Miód pitny", "miod_pitny", [("miod", 2), ("woda_czysta", 1)], ["kociol_alchemiczny"], 70,
        station="camp", fail=None, xp=8),
+    # nowe konstrukcje obozowe
+    rc("r_poslanie", "Posłanie ze skór", "poslanie", [("skora_wilka", 2), ("drewno", 2)], [], 80, fail=None, xp=10,
+       desc="Chrust na spód, skóry na wierzch. Włosiem do góry."),
+    rc("r_beczka", "Beczka na deszczówkę", "beczka_deszczowka", [("drewno", 4), ("zywica", 1)], ["siekiera"], 75, fail=None, xp=8),
+    rc("r_czestokol", "Częstokół", "czestokol", [("drewno", 5)], ["siekiera"], 90, fail=None, xp=6,
+       desc="Pale wbite rzędem łączą odległe budynki obozu w jedną całość."),
+    # broń i tarcze
+    rc("r_maczuga", "Maczuga", "maczuga", [("drewno", 2), ("ruda_zelaza", 1)], [], 85, fail=None, xp=6),
+    rc("r_noz", "Nóż myśliwski", "noz_mysliwski", [("ruda_zelaza", 1), ("kora_debowa", 1)], ["kowadlo"], 80, fail=None, xp=8),
+    rc("r_wlocznia", "Włócznia", "wlocznia", [("drewno", 3), ("ruda_zelaza", 2)], ["kowadlo"], 65, fail=None, xp=18),
+    rc("r_berdysz", "Berdysz", "berdysz", [("ruda_zelaza", 5), ("drewno", 2), ("wegiel", 2)], ["kowadlo"], 40,
+       fail=None, xp=45, min_level=3, catalysts=[{"item": "siarka", "bonus": 6}]),
+    rc("r_puklerz", "Puklerz", "puklerz", [("ruda_zelaza", 2), ("skora_wilka", 1)], ["kowadlo"], 70, fail=None, xp=12),
+    rc("r_tarcza_debowa", "Tarcza dębowa", "tarcza_debowa", [("drewno", 4), ("kora_debowa", 2), ("skora_wilka", 1)], ["siekiera"], 75, fail=None, xp=12),
+    rc("r_tarcza_okuta", "Okuta tarcza", "tarcza_okuta", [("drewno", 3), ("ruda_zelaza", 4), ("wegiel", 2)], ["kowadlo"], 45,
+       fail=None, xp=35, min_level=2),
+    # rękawice
+    rc("r_rek_skorzane", "Skórzana rękawica", "rekawice_skorzane", [("skora_wilka", 1)], [], 85, fail=None, xp=6,
+       desc="Jedna rękawica. Chcesz parę — uszyj dwie."),
+    rc("r_rek_szermiercza", "Rękawica szermiercza", "rekawica_szermiercza", [("skora_wilka", 1), ("wosk", 1), ("kly_wilka", 1)], [], 55,
+       fail=None, xp=20, min_level=2, catalysts=[{"item": "stol_zielarski", "bonus": 5, "tool": True}]),
+    rc("r_rek_kowalska", "Rękawica kowalska", "rekawica_kowalska", [("skora_wilka", 2), ("loj", 1)], [], 70, fail=None, xp=12),
+    rc("r_rek_drzewcowa", "Rękawica z rzemieniem", "rekawica_drzewcowa", [("skora_wilka", 1), ("zywica", 1)], [], 70, fail=None, xp=12),
+    rc("r_rek_srebrna", "Rękawica ze srebrną nicią", "rekawica_srebrna", [("skora_wilka", 1), ("srebro", 2), ("wosk", 1)], ["kowadlo"], 40,
+       fail=None, xp=40, min_level=3, catalysts=[{"item": "proszek_bursztynowy", "bonus": 6}]),
+    rc("r_rek_kolcza", "Kolcza rękawica", "rekawica_kolcza", [("ruda_zelaza", 2), ("skora_wilka", 1)], ["kowadlo"], 60, fail=None, xp=18),
+    rc("r_kastet", "Wilczy kastet", "kastet_wilczy", [("skora_wilka", 1), ("kly_wilka", 2)], [], 65, fail=None, xp=14),
+    rc("r_rek_zielarza", "Rękawica zielarza", "rekawica_zielarza", [("skora_wilka", 1), ("loj", 1), ("szalwia", 1)], [], 75, fail=None, xp=8),
+    rc("r_rek_strzygi", "Rękawica strzygi", "rekawica_strzygi", [("krew_strzygi", 2), ("skora_wilka", 1), ("prochy_upiora", 1)], ["oltarzyk"], 25,
+       fail=None, xp=90, min_level=5, tool_mode="placed", station="camp",
+       catalysts=[{"item": "kwiat_paproci", "bonus": 25}, {"item": "sznur_wisielca", "bonus": 8}]),
+    # głowa, szyja, płaszcz
+    rc("r_kaptur", "Kaptur łowcy", "kaptur", [("skora_wilka", 1)], [], 85, fail=None, xp=5),
+    rc("r_wilczy_leb", "Wilczy łeb", "wilczy_leb", [("skora_wilka", 2), ("kly_wilka", 2), ("loj", 1)], [], 55, fail=None, xp=18),
+    rc("r_szyszak", "Żelazny szyszak", "szyszak", [("ruda_zelaza", 3), ("wegiel", 1)], ["kowadlo"], 60, fail=None, xp=20),
+    rc("r_amulet_bursztyn", "Bursztynowy amulet", "amulet_bursztyn", [("bursztyn", 2), ("skora_wilka", 1)], [], 65, fail=None, xp=15),
+    rc("r_lunula", "Lunula", "lunula", [("srebro", 3), ("woda_swiecona", 1)], ["kowadlo"], 40, fail=None, xp=40, min_level=3,
+       catalysts=[{"item": "oltarzyk", "bonus": 10, "tool": True}]),
+    rc("r_plaszcz_wilczy", "Płaszcz z wilczej skóry", "plaszcz_wilczy", [("skora_wilka", 3)], [], 75, fail=None, xp=12),
+    rc("r_plaszcz_cienia", "Płaszcz cienia", "plaszcz_cienia", [("skora_wilka", 2), ("lulek", 2), ("wegiel", 2)], ["kociol_alchemiczny"], 40,
+       fail=None, xp=45, min_level=3, station="camp", catalysts=[{"item": "oko_nocnicy", "bonus": 12}]),
+    # pas, nogi, stopy, pierścienie
+    rc("r_pas_sakwy", "Pas z sakiewkami", "pas_sakwy", [("skora_wilka", 1), ("wosk", 1)], [], 80, fail=None, xp=8),
+    rc("r_pas_wojownika", "Pas wojownika", "pas_wojownika", [("skora_wilka", 2), ("ruda_zelaza", 1)], ["kowadlo"], 65, fail=None, xp=14),
+    rc("r_nogawice", "Skórzane nogawice", "nogawice", [("skora_wilka", 2)], [], 80, fail=None, xp=8),
+    rc("r_nagolenniki", "Żelazne nagolenniki", "nagolenniki", [("ruda_zelaza", 3), ("skora_wilka", 1)], ["kowadlo"], 60, fail=None, xp=20),
+    rc("r_lapcie", "Łapcie z łyka", "lapcie", [("kora_debowa", 2)], [], 90, fail=None, xp=3),
+    rc("r_buty", "Buty z cholewą", "buty_skorzane", [("skora_wilka", 2), ("loj", 1)], [], 70, fail=None, xp=12),
+    rc("r_pierscien_srebrny", "Srebrny pierścień", "pierscien_srebrny", [("srebro", 2)], ["kowadlo"], 60, fail=None, xp=20),
+    rc("r_pierscien_bursztyn", "Pierścień z bursztynem", "pierscien_bursztyn", [("srebro", 1), ("bursztyn", 1)], ["kowadlo"], 55, fail=None, xp=22),
+    rc("r_sygnet", "Sygnet łowcy", "sygnet_lowcy", [("ruda_zelaza", 2), ("wegiel", 1)], ["kowadlo"], 65, fail=None, xp=15),
 ]
 
 # Narzędzia kuźni w budynku kuźni działają jak „kowadło” — patrz crafting.BUILDING_TOOLS.
@@ -671,6 +824,7 @@ BUILDINGS = [
          shop=[{"item": "siekiera", "price": 25}, {"item": "kilof", "price": 30}, {"item": "lopata", "price": 22},
                {"item": "kord", "price": 30}, {"item": "topor", "price": 75}, {"item": "srebrny_sztylet", "price": 140},
                {"item": "przeszywanica", "price": 45}, {"item": "kolczuga", "price": 170},
+               {"item": "rekawice_skorzane", "price": 15}, {"item": "puklerz", "price": 35}, {"item": "kaptur", "price": 18},
                {"item": "ruda_zelaza", "price": 9}, {"item": "wegiel", "price": 3}],
          teaches=[{"recipe": "r_olej_srebrny", "price": 50}, {"recipe": "r_kowadlo", "price": 40}]),
     dict(id="cmentarz", name="Cmentarz", glyph="⚰️", weight=0.8,
@@ -818,6 +972,34 @@ def seed_missing():
         if r["id"] not in existing[table]:
             upsert(table, r, bump=False)
             n += 1
+    return n
+
+
+def seed_backfill():
+    """Przedmioty istniejące już w bazie dostają nowe pola z aktualizacji (slot stroju, rodzaj broni,
+    użycie budynku), jeśli admin jeszcze ich nie ustawił. Nie nadpisuje niczego, co jest już wypełnione."""
+    from .db import bump_content, loads, query
+    n = 0
+    seed = {r["id"]: r for t, r in _prepared() if t == "items"}
+    for row in query("SELECT id, slot, uses, effects FROM items"):
+        src = seed.get(row["id"])
+        if not src:
+            continue
+        upd = {}
+        if not row.get("slot") and src.get("slot"):
+            upd["slot"] = src["slot"]
+            eff = loads(row.get("effects"), {}) or {}
+            add = {k: v for k, v in (src.get("effects") or {}).items() if k not in eff}
+            if add:
+                eff.update(add)
+                upd["effects"] = dumps(eff)
+        if (loads(row.get("uses"), []) or []) == [] and src.get("uses"):
+            upd["uses"] = dumps(src["uses"])
+        if upd:
+            execute(f"UPDATE items SET {', '.join(k + '=?' for k in upd)} WHERE id=?", list(upd.values()) + [row["id"]])
+            n += 1
+    if n:
+        bump_content()
     return n
 
 

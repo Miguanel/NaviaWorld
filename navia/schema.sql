@@ -31,7 +31,8 @@ CREATE TABLE IF NOT EXISTS characters(
   contracts TEXT DEFAULT '[]',
   lat REAL, lng REAL,
   home_lat REAL, home_lng REAL, home_set_at REAL,
-  last_tick REAL, last_seen REAL, last_move REAL
+  last_tick REAL, last_seen REAL, last_move REAL,
+  equipment TEXT                 -- założony strój {slot: przedmiot}
 );
 
 CREATE TABLE IF NOT EXISTS inventory(
@@ -68,7 +69,9 @@ CREATE TABLE IF NOT EXISTS items(
   max_durability REAL DEFAULT 0,
   area_radius REAL DEFAULT 18,
   decay_per_hour REAL DEFAULT 0,
-  repair_cost TEXT DEFAULT '[]'
+  repair_cost TEXT DEFAULT '[]',
+  slot TEXT DEFAULT '',          -- gdzie się zakłada: head, neck, cloak, chest, belt, legs, feet, glove, weapon, shield, ring
+  uses TEXT DEFAULT '[]'         -- akcje użycia budynku postawionego w obozie/siedlisku
 );
 
 CREATE TABLE IF NOT EXISTS recipes(
@@ -88,7 +91,8 @@ CREATE TABLE IF NOT EXISTS recipes(
   min_level INTEGER DEFAULT 1,
   xp INTEGER DEFAULT 10,
   known_by_default INTEGER DEFAULT 1,
-  enabled INTEGER DEFAULT 1
+  enabled INTEGER DEFAULT 1,
+  category TEXT DEFAULT ''       -- rozdział w Księdze receptur (puste = według wyniku)
 );
 
 CREATE TABLE IF NOT EXISTS monsters(

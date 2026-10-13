@@ -125,7 +125,7 @@ def structure_view(s):
             "connected": s.get("connected", True),
             "durability": round(dur, 1), "max_durability": mx, "pct": round(100 * dur / mx),
             "broken": dur <= 0, "repair_cost": it.get("repair_cost") or [],
-            "decay_per_hour": it.get("decay_per_hour") or 0}
+            "decay_per_hour": it.get("decay_per_hour") or 0, "uses": len(it.get("uses") or [])}
 
 
 # --------------------------------------------------------------------------- akcje
@@ -168,13 +168,9 @@ def my_camp(uid):
     return query("SELECT * FROM camps WHERE owner_id=? AND expires_at>?", (uid, time.time()), one=True)
 
 
-def place_structure(ch, item_id, where, lat=None, lng=None):
-    """Rozbudowa: stawia budynek w wybranym punkcie (domyślnie tam, gdzie stoisz).
-    Punkt musi być blisko ciebie i nie dalej niż SITE_MAX_SPREAD_M od centrum."""
+def check_place(ch, where, lat=None, lng=None):
+    """Sprawdza, czy w tym miejscu można postawić budynek. Zwraca (camp_id, lat, lng, centrum_lat, centrum_lng)."""
     uid = ch["user_id"]
-    it = content()["items"].get(item_id)
-    if not it or not it.get("placeable"):
-        raise GameError("Tego nie da się postawić.")
     lat = ch["lat"] if lat is None else float(lat)
     lng = ch["lng"] if lng is None else float(lng)
     if dist_m(ch["lat"], ch["lng"], lat, lng) > config.BUILD_REACH_M:
@@ -193,6 +189,17 @@ def place_structure(ch, item_id, where, lat=None, lng=None):
         raise GameError("Nieznane miejsce.")
     if dist_m(clat, clng, lat, lng) > config.SITE_MAX_SPREAD_M:
         raise GameError(f"To za daleko od centrum (najwyżej {config.SITE_MAX_SPREAD_M} m).")
+    return camp_id, lat, lng, clat, clng
+
+
+def place_structure(ch, item_id, where, lat=None, lng=None):
+    """Rozbudowa: stawia budynek w wybranym punkcie (domyślnie tam, gdzie stoisz).
+    Punkt musi być blisko ciebie i nie dalej niż SITE_MAX_SPREAD_M od centrum."""
+    uid = ch["user_id"]
+    it = content()["items"].get(item_id)
+    if not it or not it.get("placeable"):
+        raise GameError("Tego nie da się postawić.")
+    camp_id, lat, lng, clat, clng = check_place(ch, where, lat, lng)
     chm.remove_item(uid, item_id, 1)
     execute("INSERT INTO structures(owner_id,item_id,site,camp_id,lat,lng,durability,updated_at) VALUES (?,?,?,?,?,?,?,?)",
             (uid, item_id, where, camp_id, lat, lng, it.get("max_durability") or 100, time.time()))

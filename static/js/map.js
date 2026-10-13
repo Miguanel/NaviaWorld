@@ -149,7 +149,9 @@ const MapView = {
       mk.bindPopup(`<h4>${esc(s.glyph)} ${esc(s.name)}</h4>
         <div class="sc" style="color:${color}">${s.connected ? 'połączony z obszarem' : 'stoi osobno — działa tylko w swoim kręgu'}</div>
         <p style="margin:.4em 0">Zasięg ${Math.round(s.radius)} m · wytrzymałość ${s.pct}%${s.broken ? ' — zniszczony!' : ''}</p>
-        <button class="btn small" onclick="Game.openSite('${kind}'${kind === 'base' ? ', ' + site.owner_id : ''})">Zarządzaj</button>`);
+        ${kind === 'base' || site.own ? `<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
+        <button class="btn small primary" onclick="CampUI.openStruct(${s.id})">${s.uses ? '✦ Użyj' : 'Otwórz'}</button>
+        <button class="btn small" onclick="Game.openSite('${kind}'${kind === 'base' ? ', ' + site.owner_id : ''})">Plan ${kind === 'camp' ? 'obozu' : 'siedliska'}</button></div>` : ''}`);
       mk.addTo(layer);
     }
   },

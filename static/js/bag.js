@@ -2,7 +2,7 @@
 const BAG_GROUPS = [
   { name: 'Surowce', glyph: '🌿', cats: ['ziolo', 'grzyb', 'mineral', 'drewno', 'woda', 'czesc_potwora'] },
   { name: 'Alchemia', glyph: '⚗️', cats: ['eliksir', 'olej', 'wywar', 'katalizator'] },
-  { name: 'Wyposażenie', glyph: '⚔', cats: ['bron', 'pancerz', 'narzedzie'] },
+  { name: 'Wyposażenie', glyph: '⚔', cats: ['bron', 'tarcza', 'rekawice', 'pancerz', 'bizuteria', 'narzedzie'] },
   { name: 'Obozowisko', glyph: '🔥', cats: ['konstrukcja'] },
   { name: 'Prowiant i skarby', glyph: '🍞', cats: ['jedzenie', 'artefakt', 'inne'] },
 ];
@@ -11,13 +11,15 @@ const Bag = {
   filter: 'all',
   combineFrom: null,
   drag: null,
+  expanded: null,   // przedmiot rozwinięty w siatce (szczegóły i akcje)
 
   render(body) {
     const inv = Game.state.inventory;
     const order = Object.keys(CAT_NAMES);
     const rank = c => { const i = order.indexOf(c); return i < 0 ? 999 : i; };
     const cats = [...new Set(inv.map(i => i.category))].sort((a, b) => rank(a) - rank(b));
-    body.append(h('p', { class: 'hint' }, 'Przeciągnij przedmiot na inny (na telefonie: przytrzymaj i przeciągnij), żeby sprawdzić, co z nich powstanie. Dotknij, żeby obejrzeć.'));
+    body.append(h('p', { class: 'hint' }, 'Dotknij przedmiotu, żeby go rozwinąć i zobaczyć akcje. Przeciągnij przedmiot na inny (na telefonie: przytrzymaj i przeciągnij), żeby sprawdzić, co z nich powstanie.'));
+    if (this.expanded && !inv.some(i => i.id === this.expanded)) this.expanded = null;
     if (this.combineFrom) {
       const it = inv.find(i => i.id === this.combineFrom);
       body.append(h('div', { class: 'card row' }, g(it?.glyph), h('span', {}, `Łączysz: ${it?.name}. Wybierz drugi przedmiot.`),
@@ -36,10 +38,12 @@ const Bag = {
     const slots = list => {
       const grid = h('div', { class: 'inv-grid' });
       for (const it of list.sort((a, b) => a.name.localeCompare(b.name, 'pl'))) {
-        const s = h('div', { class: `slot r-${it.rarity}${this.combineFrom === it.id ? ' selected' : ''}`, 'data-item': it.id, title: it.name },
+        const open = this.expanded === it.id;
+        const s = h('div', { class: `slot r-${it.rarity}${this.combineFrom === it.id ? ' selected' : ''}${open ? ' expanded' : ''}${it.slot ? ' wearable' : ''}`, 'data-item': it.id, title: it.name },
           h('span', { class: 'n' }, it.name), g(it.glyph), h('span', { class: 'q' }, it.qty));
         this.bindDrag(s, it);
         grid.append(s);
+        if (open) grid.append(this.detailPanel(it));
       }
       return grid;
     };
@@ -153,12 +157,39 @@ const Bag = {
       Sheet.refresh();
       return;
     }
-    this.detail(it);
+    this.toggle(it.id);
+  },
+
+  toggle(id) {
+    this.expanded = this.expanded === id ? null : id;
+    Sheet.refresh();
+    if (this.expanded) {
+      setTimeout(() => $('.slot-detail')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }), 30);
+    }
+  },
+
+  /** Otwiera torbę z rozwiniętym przedmiotem (np. z karty postaci). */
+  show(id) {
+    this.expanded = id; this.filter = 'all';
+    const it = Game.state.inventory.find(i => i.id === id);
+    if (it) {
+      try {
+        const closed = JSON.parse(Store.get('navia_bag_closed') || '{}') || {};
+        delete closed[it.category]; Store.set('navia_bag_closed', JSON.stringify(closed));
+      } catch (e) { /* */ }
+    }
+    if (Sheet.current === 'bag') Sheet.refresh(); else Game.openSheet('bag');
+    setTimeout(() => $('.slot-detail')?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 80);
+  },
+
+  statList(stats) {
+    return Object.entries(stats || {}).map(([k, v]) => `${v > 0 ? '+' : ''}${v} ${Game.statName(k)}`).join(', ');
   },
 
   describeEffects(eff) {
     const out = [];
     if (!eff) return out;
+    const kinds = (Game.cfg && Game.cfg.weapon_kinds) || {};
     if (eff.heal) out.push(`${eff.heal > 0 ? '+' : ''}${eff.heal} HP`);
     if (eff.vigor) out.push(`+${eff.vigor} wigoru`);
     if (eff.toxicity) out.push(`${eff.toxicity > 0 ? '+' : ''}${eff.toxicity} toksyczności`);
@@ -166,35 +197,105 @@ const Bag = {
     if (eff.mutation) out.push(`Przemiana „${eff.mutation.name}”: ${Game.fmtStats(eff.mutation.stats)} na zawsze · ryzyko ${Math.round((eff.risk || 0) * 100)}%`);
     if (eff.oil) out.push(`Olej: +${Math.round(eff.oil.bonus * 100)}% obrażeń przeciw: ${eff.oil.family}`);
     if (eff.throw) out.push(`W walce można rzucić (${eff.throw.dmg} obr., silniej na: ${(eff.throw.family || []).join(', ') || 'wszystko'})`);
-    if (eff.attack) out.push(`Atak +${eff.attack}${(eff.tags || []).length ? ' · ' + eff.tags.join(', ') : ''}`);
-    if (eff.armor) out.push(`Pancerz +${eff.armor}`);
+    if (eff.attack) out.push(`Atak +${eff.attack}${eff.kind ? ` · ${kinds[eff.kind] || eff.kind}` : ''}${eff.two_handed ? ' · dwuręczna' : ''}${(eff.tags || []).length ? ' · ' + eff.tags.join(', ') : ''}`);
+    if (eff.armor) out.push(`Pancerz +${String(eff.armor).replace('.', ',')}`);
+    if (eff.stats && Object.keys(eff.stats).length) out.push(`Gdy założone: ${this.statList(eff.stats)}`);
+    if (eff.weapon_mods) out.push('Broń w tej ręce: ' + this.weaponMods(eff.weapon_mods));
     return out;
   },
 
-  detail(it) {
+  weaponMods(m) {
+    const kinds = (Game.cfg && Game.cfg.weapon_kinds) || {};
+    const p = [];
+    if (m.attack_pct) p.push(`${m.attack_pct > 0 ? '+' : ''}${m.attack_pct}% ataku`);
+    if (m.attack) p.push(`${m.attack > 0 ? '+' : ''}${m.attack} ataku`);
+    if (m.crit) p.push(`+${m.crit}% krytyka`);
+    if ((m.tags || []).length) p.push(`działa jak: ${m.tags.join(', ')}`);
+    const k = (m.kinds || []).length ? ` (tylko: ${m.kinds.map(x => kinds[x] || x).join(', ')})` : ' (każda broń)';
+    return (p.join(', ') || 'bez zmian') + k;
+  },
+
+  /** Sloty, na które da się założyć przedmiot: [{slot, name, item}] */
+  slotsFor(it) {
+    if (!it.slot) return [];
+    const eq = Game.state.char.equipment.slots;
+    const two = it.effects?.two_handed;
+    const pref = { shield: ['hand_l', 'hand_r'] }[it.slot] || [];
+    const rank = s => (s.item ? 10 : 0) + (pref.indexOf(s.slot) >= 0 ? pref.indexOf(s.slot) : 5);
+    return eq.filter(s => s.accepts.includes(it.slot) && (!two || s.slot === 'hand_r')).sort((a, b) => rank(a) - rank(b));
+  },
+
+  async equip(id, slot) {
+    const r = await Game.post('/equip', { item: id, slot }, true);
+    if (r && this.expanded === id && !Game.state.inventory.some(i => i.id === id)) this.expanded = null;
+    if (Sheet.current) Sheet.refresh();
+    return r;
+  },
+
+  /** Przyciski „Załóż” / „Podmień” dla przedmiotu do ubrania. */
+  equipButtons(it, { small } = {}) {
+    const slots = this.slotsFor(it);
+    const cls = 'btn' + (small ? ' small' : '');
+    const out = [];
+    const many = slots.length > 1;
+    for (const s of slots) {
+      const where = many ? ` · ${s.name.toLowerCase()}` : '';
+      if (s.item) out.push(h('button', { class: cls, title: `Zdejmiesz: ${s.item.name}`, onclick: () => this.equip(it.id, s.slot) }, `⇄ Podmień${where}`, h('small', { class: 'muted' }, ` (${s.item.name})`)));
+      else out.push(h('button', { class: cls + ' primary', onclick: () => this.equip(it.id, s.slot) }, `Załóż${where}`));
+    }
+    return out;
+  },
+
+  /** Porównanie z tym, co jest teraz założone. */
+  compare(it) {
+    const slots = this.slotsFor(it).filter(s => s.item);
+    if (!slots.length) return null;
+    const e = it.effects || {};
+    const rows = slots.map(s => {
+      const o = s.item.effects || {};
+      const d = [];
+      const diff = (a, b, label) => { const x = Math.round(((a || 0) - (b || 0)) * 10) / 10; if (x) d.push(h('span', { class: 'bb-stat ' + (x > 0 ? 'up' : 'down') }, `${x > 0 ? '+' : ''}${String(x).replace('.', ',')} ${label}`)); };
+      diff(e.attack, o.attack, 'ataku'); diff(e.armor, o.armor, 'pancerza');
+      const keys = new Set([...Object.keys(e.stats || {}), ...Object.keys(o.stats || {})]);
+      keys.forEach(k => diff((e.stats || {})[k], (o.stats || {})[k], Game.statName(k)));
+      diff((e.weapon_mods || {}).attack_pct, (o.weapon_mods || {}).attack_pct, '% ataku broni');
+      return h('div', { class: 'cmp-row' }, h('span', { class: 'faint' }, `zamiast ${s.item.glyph} ${s.item.name} (${s.name.toLowerCase()}): `),
+        d.length ? h('span', { class: 'bb-stats', style: { display: 'inline-flex' } }, d) : h('span', { class: 'faint' }, 'bez różnicy w liczbach'));
+    });
+    return h('div', { class: 'cmp' }, rows);
+  },
+
+  /** Rozwinięty przedmiot — panel w siatce torby z akcjami (zamiast okna modalnego). */
+  detailPanel(it) {
     const st = Game.state;
     const effs = this.describeEffects(it.effects);
     if (it.tool_bonus) effs.push(`Narzędzie: +${it.tool_bonus}% do szansy wytworzenia`);
     if (it.catalyst_bonus) effs.push(`Katalizator: +${it.catalyst_bonus}% do każdej receptury`);
-    const acts = h('div', { class: 'row wrap', style: { marginTop: '14px' } });
+    if (it.uses) effs.push(`Postawiony w obozie ma ${it.uses} ${plural(it.uses, 'akcję', 'akcje', 'akcji')} użycia.`);
+    const slotName = it.slot ? ((Game.cfg.slot_types || {})[it.slot] || it.slot) : null;
+    const acts = h('div', { class: 'sd-actions' });
+    if (it.slot) acts.append(...this.equipButtons(it));
     if (it.usable) acts.append(h('button', { class: 'btn primary', onclick: () => Game.useItem(it.id) }, ['eliksir', 'wywar'].includes(it.category) ? 'Wypij' : 'Użyj'));
     if (it.placeable) {
-      acts.append(h('button', { class: 'btn', disabled: !st.site.my_camp, onclick: () => Game.place(it.id, 'camp') }, 'Postaw w obozie'));
-      acts.append(h('button', { class: 'btn', disabled: !st.site.at_own_base, onclick: () => Game.place(it.id, 'base') }, 'Postaw w siedlisku'));
+      acts.append(h('button', { class: 'btn', disabled: !st.site.my_camp, title: st.site.my_camp ? '' : 'Najpierw rozbij obóz', onclick: () => Game.place(it.id, 'camp') }, 'Postaw w obozie'));
+      acts.append(h('button', { class: 'btn', disabled: !st.site.at_own_base, title: st.site.at_own_base ? '' : 'Stań w swoim siedlisku', onclick: () => Game.place(it.id, 'base') }, 'Postaw w siedlisku'));
     }
-    acts.append(h('button', { class: 'btn', onclick: () => { Modal.close(); this.suggest([it.id], innerWidth / 2, innerHeight / 3); } }, it.is_tool ? 'Użyj narzędzia' : 'Receptury z tym'));
-    acts.append(h('button', { class: 'btn', onclick: () => { Modal.close(); this.combineFrom = it.id; Sheet.refresh(); } }, 'Połącz z…'));
-    acts.append(h('button', { class: 'btn', onclick: () => { Modal.close(); Finder.search(it.id); } }, '🧭 Gdzie zdobyć więcej?'));
-    acts.append(h('button', { class: 'btn ghost small', onclick: () => Game.drop(it.id) }, 'Wyrzuć 1'));
-    Modal.open([
-      h('div', { class: 'row' }, h('div', { style: { fontSize: '54px' } }, g(it.glyph)),
-        h('div', {}, h('div', { class: 'event-kicker' }, `${CAT_NAMES[it.category] || it.category} · ${it.rarity}`),
-          h('h2', { style: { fontSize: '28px' } }, it.name), h('div', { class: 'muted sc' }, `×${it.qty} · wartość ${money(it.value)}`))),
-      h('div', { class: 'ornament' }),
-      h('p', { class: 'event-text', style: { fontSize: '16px' } }, it.description),
+    acts.append(h('button', { class: 'btn', onclick: () => this.suggest([it.id], innerWidth / 2, innerHeight / 3) }, it.is_tool ? 'Użyj narzędzia' : 'Receptury z tym'));
+    acts.append(h('button', { class: 'btn', onclick: () => { Recipes.ingredient = it.id; Recipes.group = 'all'; Recipes.chapter = undefined; Recipes.show = 'all'; Recipes.query = ''; Game.openSheet('recipes'); } }, '📖 W księdze'));
+    acts.append(h('button', { class: 'btn', onclick: () => { this.expanded = null; this.combineFrom = it.id; Sheet.refresh(); } }, 'Połącz z…'));
+    acts.append(h('button', { class: 'btn', onclick: () => Finder.search(it.id) }, '🧭 Gdzie zdobyć?'));
+    acts.append(h('button', { class: 'btn ghost', onclick: () => Game.drop(it.id) }, 'Wyrzuć 1'));
+    return h('div', { class: `slot-detail r-${it.rarity}` },
+      h('div', { class: 'sd-head' },
+        h('div', { class: 'sd-glyph' }, g(it.glyph)),
+        h('div', { class: 'sd-titles' },
+          h('div', { class: 'event-kicker' }, `${CAT_NAMES[it.category] || it.category} · ${it.rarity}${slotName ? ' · zakłada się: ' + slotName.toLowerCase() : ''}`),
+          h('h3', {}, it.name), h('div', { class: 'muted sc', style: { fontSize: '13px' } }, `×${it.qty} · wartość ${money(it.value)}`)),
+        h('button', { class: 'x sd-close', 'aria-label': 'Zwiń', onclick: () => this.toggle(it.id) }, '✕')),
+      h('p', { class: 'sd-desc' }, it.description),
       effs.length ? h('ul', { class: 'loot-list' }, effs.map(e => h('li', {}, e))) : null,
-      acts,
-    ]);
+      this.compare(it),
+      acts);
   },
 
   // ----------------------------------------------------------- dymek z propozycjami
@@ -230,115 +331,3 @@ const Bag = {
   },
 };
 
-/* ----------------------------------------------------------------- Receptury */
-const Recipes = {
-  list: [],
-  open: {},
-  selected: {},
-  focus: null,
-  query: '',
-
-  async render(body) {
-    body.append(h('div', { class: 'muted' }, 'Wczytuję księgę…'));
-    try { this.list = (await API.get('/recipes')).recipes; } catch (e) { body.innerHTML = ''; return body.append(h('p', {}, e.message)); }
-    body.innerHTML = '';
-    if (this.focus) { this.open[this.focus] = true; }
-    const search = h('input', { placeholder: 'Szukaj receptury…', value: this.query });
-    search.addEventListener('input', () => { this.query = search.value; this.paint(listEl); });
-    const listEl = h('div', {});
-    body.append(h('p', { class: 'hint' }, 'Szansę podnoszą: Alchemia, narzędzia (np. alembik, kocioł) i katalizatory. Zaznacz katalizator, by go dodać.'), search, h('div', { style: { height: '10px' } }), listEl);
-    this.paint(listEl);
-    if (this.focus) {
-      const el = document.getElementById('rc-' + this.focus);
-      if (el) setTimeout(() => el.scrollIntoView({ block: 'start', behavior: 'smooth' }), 50);
-      this.focus = null;
-    }
-  },
-
-  chance(r) {
-    const sel = this.selected[r.id] || new Set(r.catalysts.filter(c => c.selected).map(c => c.item));
-    this.selected[r.id] = sel;
-    let bonus = 0;
-    for (const c of r.catalysts) if (sel.has(c.item) && c.have) bonus += c.bonus;
-    const b = r.breakdown;
-    const raw = (b.base || 0) + b.alchemia + b.narzedzia + bonus;
-    return { val: Math.max(3, Math.min(97, raw)), bonus };
-  },
-
-  paint(listEl) {
-    listEl.innerHTML = '';
-    const q = this.query.toLowerCase();
-    const items = this.list.filter(r => !q || r.name.toLowerCase().includes(q) || r.result.name.toLowerCase().includes(q));
-    if (!items.length) listEl.append(h('p', { class: 'muted' }, 'Brak receptur.'));
-    for (const r of items) listEl.append(this.card(r, listEl));
-  },
-
-  card(r, listEl) {
-    const ch = this.chance(r);
-    const isOpen = !!this.open[r.id];
-    const el = h('div', { class: 'recipe' + (r.can ? ' can' : ''), id: 'rc-' + r.id });
-    el.append(h('div', { class: 'recipe-head', onclick: () => { this.open[r.id] = !isOpen; this.paint(listEl); } },
-      h('span', { class: 'big' }, g(r.result.glyph)),
-      h('div', {}, h('h4', {}, r.name + (r.result.qty > 1 ? ` ×${r.result.qty}` : '')),
-        h('div', { class: 'muted', style: { fontSize: '12.5px' } }, r.can ? 'Gotowe do wykonania' : 'Brakuje: ' + r.missing.slice(0, 3).join(', ') + (r.missing.length > 3 ? '…' : ''))),
-      h('div', { class: 'chance' }, Math.round(ch.val) + '%', h('small', {}, 'szansa'))));
-    if (!isOpen) return el;
-    if (r.description) el.append(h('p', { class: 'muted', style: { fontStyle: 'italic', margin: '8px 0 0' } }, r.description));
-    el.append(h('div', { class: 'section-title' }, 'Składniki'),
-      h('div', { class: 'req' }, r.ingredients.map(i => h('button', {
-        class: 'chip req-find ' + (i.have >= i.qty ? 'good' : 'bad'), title: 'Pokaż strzałkę do miejsca, gdzie to zdobyć',
-        onclick: () => Finder.guide(i.item),
-      }, g(i.glyph), `${i.name} ${i.have}/${i.qty} `, g('🧭')))),
-      h('div', { class: 'faint', style: { fontSize: '12px', marginTop: '4px' } }, 'Dotknij składnika — na mapie pojawi się strzałka do miejsca, gdzie go zdobędziesz.'));
-    if (r.tools.length) {
-      const where = { any: '', bag: ' (w torbie)', placed: ' (postawione)' }[r.tool_mode] || '';
-      el.append(h('div', { class: 'section-title' }, 'Narzędzia' + where),
-        h('div', { class: 'req' }, r.tools.map(t => h('button', { class: 'chip req-find ' + (t.source ? 'good' : 'bad'), onclick: () => Finder.guide(t.item) }, g(t.glyph), t.name,
-          t.source ? h('small', { class: 'muted' }, ' · ' + ({ bag: 'torba', placed: 'postawione', building: 'warsztat' }[t.source])) : ''))));
-    }
-    el.append(h('div', { class: 'section-title' }, 'Miejsce'),
-      h('div', { class: 'req' }, h('span', { class: 'chip ' + (r.station.ok ? 'good' : 'bad') }, r.station.label)));
-    if (r.catalysts.length) {
-      el.append(h('div', { class: 'section-title' }, 'Katalizatory i pomoce'));
-      const box = h('div', { class: 'req' });
-      for (const c of r.catalysts) {
-        const on = this.selected[r.id].has(c.item);
-        const chip = h('button', {
-          class: 'chip cat-toggle ' + (!c.have ? 'off' : on ? 'on' : ''),
-          title: c.tool ? 'Pomocnicze narzędzie — działa samo, gdy jest pod ręką' : 'Zużywane przy tworzeniu',
-          onclick: () => {
-            if (!c.have || c.tool) return;
-            on ? this.selected[r.id].delete(c.item) : this.selected[r.id].add(c.item);
-            this.paint(listEl);
-          },
-        }, g(c.glyph), `${c.name} +${c.bonus}%`, c.tool ? ' ⚒' : '', c.universal ? ' ✦' : '');
-        box.append(chip);
-      }
-      el.append(box);
-    }
-    const b = r.breakdown;
-    el.append(h('div', { class: 'chance-bar' }, h('i', { style: { width: ch.val + '%' } })),
-      h('div', { class: 'breakdown' }, `baza ${b.base}% + alchemia ${b.alchemia}% + narzędzia ${b.narzedzia}% + katalizatory ${ch.bonus}% = ${Math.round(ch.val)}%`),
-      h('div', { class: 'row', style: { marginTop: '10px' } },
-        h('span', { class: 'muted', style: { fontSize: '13px' } }, `Wynik: ${r.result.name}`), h('span', { class: 'spacer' }),
-        h('button', { class: 'btn primary', disabled: !r.can, onclick: () => this.craft(r.id, [...this.selected[r.id]]) }, 'Twórz')));
-    return el;
-  },
-
-  async craft(id, catalysts) {
-    try {
-      const r = await API.post('/craft', { recipe: id, catalysts });
-      Game.applyState(r.state);
-      const res = r.result;
-      Modal.open([
-        h('div', { class: 'event-kicker' }, `Szansa ${res.chance}% · rzut ${res.roll}`),
-        h('h2', { class: 'event-title' }, res.success ? 'Udało się' : 'Porażka'),
-        h('p', { class: 'event-text' }, res.text),
-        res.messages.length ? h('ul', { class: 'loot-list' }, res.messages.map(m => h('li', {}, m))) : null,
-        h('button', { class: 'btn block', style: { marginTop: '14px' }, onclick: () => Modal.close() }, 'Dalej'),
-      ]);
-      delete this.selected[id];
-      if (Sheet.current === 'recipes' || Sheet.current === 'bag') Sheet.refresh();
-    } catch (e) { toast(e.message, 'err'); }
-  },
-};

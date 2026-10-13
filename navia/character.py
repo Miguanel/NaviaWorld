@@ -11,7 +11,7 @@ STAT_NAMES = {
 }
 BASE_STATS = {"sila": 5, "zrecznosc": 5, "witalnosc": 5, "moc": 5, "odpornosc": 5, "alchemia": 3, "percepcja": 5}
 
-CHAR_JSON = ["stats", "mutations", "effects", "cooldowns", "combat", "contracts"]
+CHAR_JSON = ["stats", "mutations", "effects", "cooldowns", "combat", "contracts", "equipment"]
 
 
 def plural(n, one, few, many):
@@ -55,13 +55,15 @@ def load(user_id):
     ch["contracts"] = ch["contracts"] or []
     if ch.get("energy") is None:
         ch["energy"] = config.ENERGY_START
+    if ch.get("equipment") is None:
+        init_equipment(ch)
     return ch
 
 
 def save(ch):
     cols = ["name", "level", "xp", "stat_points", "hp", "vigor", "toxicity", "energy", "coins", "stats",
             "mutations", "effects", "cooldowns", "combat", "contracts", "lat", "lng", "home_lat", "home_lng",
-            "home_set_at", "last_tick", "last_seen", "last_move"]
+            "home_set_at", "last_tick", "last_seen", "last_move", "equipment"]
     vals = []
     for c in cols:
         v = ch.get(c)
@@ -91,21 +93,199 @@ def create(user_id, name):
 
 
 # --------------------------------------------------------------------------- statystyki
-def equipment(user_id):
-    """Najlepsza broń i pancerz z torby (zakładane automatycznie)."""
+# Sloty stroju: (klucz, nazwa, jakie rodzaje przedmiotów przyjmuje). Kolejność = układ „lalki” w karcie postaci.
+SLOTS = [
+    ("head", "Głowa", ["head"]), ("neck", "Szyja", ["neck"]), ("cloak", "Płaszcz", ["cloak"]),
+    ("chest", "Tułów", ["chest"]), ("belt", "Pas", ["belt"]), ("legs", "Nogi", ["legs"]), ("feet", "Stopy", ["feet"]),
+    ("glove_r", "Prawa rękawica", ["glove"]), ("hand_r", "Prawa ręka", ["weapon", "shield"]),
+    ("glove_l", "Lewa rękawica", ["glove"]), ("hand_l", "Lewa ręka", ["weapon", "shield"]),
+    ("ring_r", "Prawy pierścień", ["ring"]), ("ring_l", "Lewy pierścień", ["ring"]),
+]
+SLOT_NAMES = {k: n for k, n, _ in SLOTS}
+SLOT_ACCEPTS = {k: a for k, _, a in SLOTS}
+# Rodzaj przedmiotu (pole „slot” w panelu admina) → nazwa
+ITEM_SLOT_TYPES = {"head": "Głowa", "neck": "Szyja", "cloak": "Płaszcz", "chest": "Tułów", "belt": "Pas",
+                   "legs": "Nogi", "feet": "Stopy", "glove": "Rękawica", "weapon": "Broń", "shield": "Tarcza",
+                   "ring": "Pierścień"}
+# Gdy przedmiot nie ma ustawionego slotu, zgadujemy po kategorii (zgodność ze starymi przedmiotami).
+CATEGORY_SLOT = {"bron": "weapon", "pancerz": "chest", "tarcza": "shield", "rekawice": "glove", "bizuteria": "ring"}
+# Preferowana kolejność slotów przy automatycznym zakładaniu.
+SLOT_PREF = {"weapon": ["hand_r", "hand_l"], "shield": ["hand_l", "hand_r"], "glove": ["glove_r", "glove_l"],
+             "ring": ["ring_r", "ring_l"]}
+WEAPON_KINDS = {"miecz": "miecz", "sztylet": "sztylet", "topor": "topór", "obuch": "obuch", "drzewcowa": "drzewcowa",
+                "piesc": "pięść", "tarcza": "tarcza", "inne": "inna"}
+
+
+def item_slot(it):
+    """Rodzaj slotu, na który można założyć przedmiot (albo None)."""
+    if not it:
+        return None
+    return it.get("slot") or CATEGORY_SLOT.get(it.get("category"))
+
+
+def init_equipment(ch):
+    """Pierwsze wczytanie postaci po aktualizacji: zakłada najlepszą broń i pancerz z torby
+    (wcześniej gra robiła to automatycznie). Zapisuje od razu, żeby nic nie zginęło."""
+    ch["equipment"] = {}
     c = content()["items"]
-    inv = inventory(user_id)
-    weapon = armor = None
-    for row in inv:
+    best = {}
+    for row in inventory(ch["user_id"]):
         it = c.get(row["item_id"])
-        if not it:
+        st = item_slot(it)
+        if st not in ("weapon", "chest"):
             continue
-        eff = it.get("effects") or {}
-        if it["category"] == "bron" and (not weapon or eff.get("attack", 0) > (weapon["effects"] or {}).get("attack", 0)):
-            weapon = it
-        if it["category"] == "pancerz" and (not armor or eff.get("armor", 0) > (armor["effects"] or {}).get("armor", 0)):
-            armor = it
-    return weapon, armor
+        key = "attack" if st == "weapon" else "armor"
+        val = (it.get("effects") or {}).get(key, 0)
+        if st not in best or val > best[st][1]:
+            best[st] = (it["id"], val)
+    for st, (iid, _) in best.items():
+        slot = "hand_r" if st == "weapon" else "chest"
+        execute("UPDATE inventory SET qty=qty-1 WHERE user_id=? AND item_id=?", (ch["user_id"], iid))
+        ch["equipment"][slot] = iid
+    execute("DELETE FROM inventory WHERE user_id=? AND qty<=0", (ch["user_id"],))
+    execute("UPDATE characters SET equipment=? WHERE user_id=?", (dumps(ch["equipment"]), ch["user_id"]))
+
+
+def worn(ch):
+    """{slot: przedmiot} — tylko istniejące przedmioty."""
+    c = content()["items"]
+    return {s: c[i] for s, i in (ch.get("equipment") or {}).items() if i in c}
+
+
+def equip(ch, item_id, slot=None):
+    if ch.get("combat"):
+        raise GameError("W trakcie walki nie przebierzesz się.")
+    c = content()["items"]
+    it = c.get(item_id)
+    st = item_slot(it)
+    if not st:
+        raise GameError("Tego nie da się założyć.")
+    if count(ch["user_id"], item_id) < 1:
+        raise GameError("Nie masz tego w torbie.")
+    eq = ch.setdefault("equipment", {})
+    eff = it.get("effects") or {}
+    if eff.get("two_handed"):
+        slot = "hand_r"
+    candidates = [k for k, _, acc in SLOTS if st in acc]
+    if slot:
+        if slot not in SLOT_ACCEPTS or st not in SLOT_ACCEPTS[slot]:
+            raise GameError(f"To nie pasuje do miejsca: {SLOT_NAMES.get(slot, slot)}.")
+    else:
+        pref = SLOT_PREF.get(st, candidates)
+        slot = next((k for k in pref if not eq.get(k)), pref[0])
+    msgs = []
+    remove_item(ch["user_id"], item_id, 1)
+    freed = [slot]
+    if eff.get("two_handed"):
+        freed.append("hand_l")
+    if slot == "hand_l" and eq.get("hand_r") and (c.get(eq["hand_r"], {}).get("effects") or {}).get("two_handed"):
+        freed.append("hand_r")
+    for f in freed:
+        old = eq.pop(f, None)
+        if old:
+            add_item(ch["user_id"], old, 1)
+            msgs.append(f"Zdejmujesz: {c.get(old, {}).get('name', old)}.")
+    eq[slot] = item_id
+    msgs.append(f"Zakładasz: {it['name']} ({SLOT_NAMES[slot].lower()}).")
+    return msgs
+
+
+def unequip(ch, slot):
+    if ch.get("combat"):
+        raise GameError("W trakcie walki nie przebierzesz się.")
+    eq = ch.get("equipment") or {}
+    iid = eq.pop(slot, None)
+    if not iid:
+        raise GameError("Nic tam nie masz.")
+    add_item(ch["user_id"], iid, 1)
+    return f"Zdejmujesz: {content()['items'].get(iid, {}).get('name', iid)}."
+
+
+def gear_stats(ch):
+    out = {}
+    for it in worn(ch).values():
+        for s, v in ((it.get("effects") or {}).get("stats") or {}).items():
+            out[s] = out.get(s, 0) + v
+    return out
+
+
+def gear_armor(ch):
+    return round(sum(float((it.get("effects") or {}).get("armor") or 0) for it in worn(ch).values()), 1)
+
+
+def _hand(weapon, gloves, share):
+    """Siła jednej ręki: broń (albo pięść) zmieniona przez rękawicę założoną na tę rękę."""
+    eff = (weapon.get("effects") or {}) if weapon else {}
+    if not weapon:
+        kind = "piesc"
+    elif item_slot(weapon) == "shield":
+        kind = "tarcza"
+    else:
+        kind = eff.get("kind") or "inne"
+    base = float(eff.get("attack") or 0)
+    flat = pct = crit = 0.0
+    tags = list(eff.get("tags") or [])
+    used = []
+    for gl in gloves:
+        gm = (gl.get("effects") or {}).get("weapon_mods") or {}
+        if not gm:
+            continue
+        kinds = gm.get("kinds") or []
+        if kinds and kind not in kinds:
+            used.append({"name": gl["name"], "glyph": gl["glyph"], "applies": False,
+                         "why": "działa tylko z: " + ", ".join(WEAPON_KINDS.get(k, k) for k in kinds)})
+            continue
+        flat += float(gm.get("attack") or 0) * share
+        pct += float(gm.get("attack_pct") or 0) * share
+        crit += float(gm.get("crit") or 0) * share
+        tags += [t for t in gm.get("tags") or [] if t not in tags]
+        used.append({"name": gl["name"], "glyph": gl["glyph"], "applies": True})
+    attack = max(0.0, (base + flat) * (1 + pct / 100.0))
+    return {"item": weapon and {"id": weapon["id"], "name": weapon["name"], "glyph": weapon["glyph"]},
+            "kind": kind, "kind_name": WEAPON_KINDS.get(kind, kind), "base": base, "flat": round(flat, 1),
+            "pct": round(pct, 1), "crit": round(crit, 1), "attack": round(attack, 1), "tags": tags, "gloves": used}
+
+
+def gear(ch):
+    """Siła ataku z obu rąk: broń w prawej i lewej ręce, każda zmieniona przez swoją rękawicę.
+    Broń dwuręczna korzysta z obu rękawic (każda działa w połowie). Druga broń dodaje 50% swojej siły."""
+    w = worn(ch)
+    r, l = w.get("hand_r"), w.get("hand_l")
+    gr, gl = w.get("glove_r"), w.get("glove_l")
+    two = bool(r and (r.get("effects") or {}).get("two_handed"))
+    if two:
+        main = _hand(r, [g for g in (gr, gl) if g], 0.5)
+        main["side"] = "both"
+        hands = [main]
+        attack, crit, tags = main["attack"], main["crit"], main["tags"]
+    else:
+        hr = _hand(r, [gr] if gr else [], 1.0)
+        hr["side"] = "right"
+        hl = _hand(l, [gl] if gl else [], 1.0)
+        hl["side"] = "left"
+        hands = [hr, hl]
+        order = sorted([hr, hl], key=lambda x: -x["attack"])
+        first, second = order
+        attack = first["attack"] + 0.5 * second["attack"]
+        crit = first["crit"] + (0.5 * second["crit"] if second["attack"] > 0 else 0)
+        tags = list(first["tags"]) + [t for t in (second["tags"] if second["attack"] > 0 else []) if t not in first["tags"]]
+        for x in hands:
+            x["share"] = 1.0 if x is first else 0.5
+    return {"attack": round(attack, 1), "crit": round(crit, 1), "tags": tags, "two_handed": two,
+            "hands": hands, "armor": gear_armor(ch), "stats": gear_stats(ch)}
+
+
+def equipment_view(ch):
+    w = worn(ch)
+    slots = []
+    for k, name, acc in SLOTS:
+        it = w.get(k)
+        slots.append({"slot": k, "name": name, "accepts": acc,
+                      "item": it and {"id": it["id"], "name": it["name"], "glyph": it["glyph"], "rarity": it["rarity"],
+                                      "category": it["category"], "description": it["description"],
+                                      "effects": it.get("effects") or {}, "value": it["value"]},
+                      "blocked": k == "hand_l" and bool(w.get("hand_r") and (w["hand_r"].get("effects") or {}).get("two_handed"))})
+    return {"slots": slots, "gear": gear(ch)}
 
 
 def effective_stats(ch, ctx=None):
@@ -114,6 +294,8 @@ def effective_stats(ch, ctx=None):
     for m in ch["mutations"]:
         for s, v in (m.get("stats") or {}).items():
             stats[s] = stats.get(s, 0) + v
+    for s, v in gear_stats(ch).items():
+        stats[s] = stats.get(s, 0) + v
     t = time.time()
     for e in ch["effects"]:
         if e.get("until", 0) > t:

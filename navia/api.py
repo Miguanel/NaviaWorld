@@ -6,6 +6,7 @@ import time
 from flask import Blueprint, g, jsonify, request
 from werkzeug.security import check_password_hash, generate_password_hash
 
+from . import build as buildm
 from . import camp as campm
 from . import character as chm
 from . import combat as combatm
@@ -131,7 +132,8 @@ def _items_view(user_id):
                     "value": it["value"], "usable": bool(it["usable"]) and not eff.get("oil"),
                     "is_tool": bool(it["is_tool"]), "placeable": bool(it["placeable"]),
                     "catalyst_bonus": it.get("catalyst_bonus") or 0, "tool_bonus": it.get("tool_bonus") or 0,
-                    "effects": eff})
+                    "effects": eff, "slot": chm.item_slot(it) or None,
+                    "uses": len(it.get("uses") or []) if it.get("placeable") else 0})
     return out
 
 
@@ -143,7 +145,7 @@ def state_payload(ch, ctx=None):
     site = campm.site_status(ch)
     structs = [campm.structure_view(s) for s in campm.reachable_structures(ch, site)]
     my_camp = query("SELECT * FROM camps WHERE owner_id=? AND expires_at>?", (ch["user_id"], time.time()), one=True)
-    weapon, armor = chm.equipment(ch["user_id"])
+    eqv = chm.equipment_view(ch)
     omens = {}
     for mid in config.EXPLORE_MODES:
         omens[mid] = explorem.probabilities(ctx["terrains"], ctx["power_infl"], ctx["night"], ch["level"], mid,
@@ -162,8 +164,7 @@ def state_payload(ch, ctx=None):
             "effects": [{"name": e["name"], "stats": e.get("stats", {}), "left": int(e["until"] - time.time())}
                         for e in ch["effects"]],
             "lat": ch["lat"], "lng": ch["lng"], "home": [ch["home_lat"], ch["home_lng"]] if ch["home_lat"] is not None else None,
-            "weapon": weapon and {"name": weapon["name"], "glyph": weapon["glyph"], **(weapon["effects"] or {})},
-            "armor": armor and {"name": armor["name"], "glyph": armor["glyph"], **(armor["effects"] or {})},
+            "equipment": eqv,
             "contracts": ch["contracts"], "is_admin": bool(g.user["is_admin"]),
         },
         "ctx": ctx,
@@ -214,6 +215,9 @@ def get_config():
                     "interact_radius": config.INTERACT_RADIUS_M, "camp_radius": config.CAMP_RADIUS_M,
                     "build_reach": config.BUILD_REACH_M, "site_spread": config.SITE_MAX_SPREAD_M,
                     "stat_names": chm.STAT_NAMES, "tiles": config.map_tiles(),
+                    "slots": [{"slot": k, "name": n, "accepts": a} for k, n, a in chm.SLOTS],
+                    "slot_types": chm.ITEM_SLOT_TYPES, "weapon_kinds": chm.WEAPON_KINDS,
+                    "recipe_groups": crafting.RECIPE_GROUPS,
                     "currency": {"names": config.CURRENCY, "per": config.GROSZE_PER_DOBROTA},
                     "explore_cooldown": config.EXPLORE_COOLDOWN_S,
                     "combat_moves": {
@@ -350,6 +354,21 @@ def do_drop():
     return respond(ch, {"messages": ["Wyrzucasz to w krzaki."]})
 
 
+@bp.post("/equip")
+@login_required
+def do_equip():
+    ch = _char()
+    b = _body()
+    return respond(ch, {"messages": chm.equip(ch, b.get("item"), b.get("slot") or None)})
+
+
+@bp.post("/unequip")
+@login_required
+def do_unequip():
+    ch = _char()
+    return respond(ch, {"messages": [chm.unequip(ch, _body().get("slot"))]})
+
+
 @bp.post("/stats/raise")
 @login_required
 def raise_stat():
@@ -471,6 +490,42 @@ def home_set():
 def site_get(where):
     ch = _char()
     return jsonify(campm.site_view(ch, where, request.args.get("owner", type=int)))
+
+
+@bp.get("/site/<where>/buildables")
+@login_required
+def site_buildables(where):
+    ch = _char()
+    ctx = world.context_at(ch["lat"], ch["lng"])
+    chm.save(ch)
+    return jsonify(buildm.buildables(ch, ctx, where))
+
+
+@bp.post("/site/build")
+@login_required
+def site_build():
+    ch = _char()
+    ctx = world.context_at(ch["lat"], ch["lng"])
+    b = _body()
+    return respond(ch, buildm.build(ch, ctx, b.get("where"), b.get("recipe"), b.get("lat"), b.get("lng"),
+                                    b.get("catalysts") or []), ctx)
+
+
+@bp.get("/structure/<int:sid>")
+@login_required
+def structure_get(sid):
+    ch = _char()
+    ctx = world.context_at(ch["lat"], ch["lng"])
+    chm.save(ch)
+    return jsonify(buildm.structure_detail(ch, ctx, sid))
+
+
+@bp.post("/structure/use")
+@login_required
+def structure_use():
+    ch = _char()
+    b = _body()
+    return respond(ch, buildm.use_structure(ch, int(b.get("id")), b.get("index", 0)))
 
 
 @bp.post("/site/move")

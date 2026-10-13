@@ -111,7 +111,7 @@ const Admin = {
   blank() {
     const d = {};
     for (const [f, type] of this.meta.fields[this.table]) {
-      d[f] = type.startsWith('itemqty') || ['itemlist', 'catalysts', 'loot', 'moves', 'itemprice', 'recipeprice', 'stringlist', 'actions'].includes(type) || type.startsWith('taglist') ? []
+      d[f] = type.startsWith('itemqty') || ['itemlist', 'catalysts', 'loot', 'moves', 'itemprice', 'recipeprice', 'stringlist', 'actions', 'uses'].includes(type) || type.startsWith('taglist') ? []
         : type.startsWith('mods') || ['statmods', 'effects', 'outcome'].includes(type) ? {}
           : type === 'bool' ? 1 : type === 'number' || type === 'range' ? 0 : '';
     }
@@ -155,7 +155,7 @@ const Admin = {
       !this.isNew ? h('button', { class: 'btn ghost', style: { color: '#e0745f' }, onclick: () => this.remove() }, 'Usuń') : null));
   },
 
-  wide: ['textarea', 'itemqty', 'itemlist', 'catalysts', 'loot', 'moves', 'itemprice', 'recipeprice', 'stringlist', 'effects', 'outcome', 'actions', 'statmods'],
+  wide: ['textarea', 'itemqty', 'itemlist', 'catalysts', 'loot', 'moves', 'itemprice', 'recipeprice', 'stringlist', 'effects', 'outcome', 'actions', 'uses', 'statmods'],
 
   field(f, type, label) {
     const r = this.current;
@@ -204,7 +204,7 @@ const Admin = {
     } else if (type.startsWith('select:')) {
       const opts = this.opt(type.split(':')[1]);
       const s = h('select', { onchange: e => { set(e.target.value); if (['kind', 'layer'].includes(f)) this.renderEditor(); } });
-      for (const o of opts) s.append(h('option', { value: o, selected: o === r[f] }, o));
+      for (const o of opts) s.append(h('option', { value: o, selected: o === (r[f] ?? '') }, o || '— brak —'));
       if (r[f] && !opts.includes(r[f])) s.append(h('option', { value: r[f], selected: true }, r[f]));
       wrap.append(s);
     } else if (type === 'item' || type === 'item?') {
@@ -302,15 +302,23 @@ const Admin = {
         box.append(h('label', {}, h('input', { type: 'checkbox', checked: r[f].includes(o), onchange: e => { if (e.target.checked) r[f].push(o); else r[f] = r[f].filter(x => x !== o); set(r[f]); } }), this.itemName(o)));
       }
       wrap.append(box);
-    } else if (['effects', 'outcome', 'actions'].includes(type)) {
-      const ta = h('textarea', { class: 'json', rows: type === 'actions' ? 10 : 6 }, JSON.stringify(r[f] ?? (type === 'actions' ? [] : {}), null, 2));
+    } else if (['effects', 'outcome', 'actions', 'uses'].includes(type)) {
+      const isList = ['actions', 'uses'].includes(type);
+      const ta = h('textarea', { class: 'json', rows: isList ? 10 : 6 }, JSON.stringify(r[f] ?? (isList ? [] : {}), null, 2));
       const err = h('div', { class: 'err', style: { textAlign: 'left' } });
-      ta.addEventListener('input', () => { try { set(JSON.parse(ta.value || (type === 'actions' ? '[]' : '{}'))); err.textContent = ''; } catch (e) { err.textContent = 'Błąd JSON: ' + e.message; } });
+      ta.addEventListener('input', () => { try { set(JSON.parse(ta.value || (isList ? '[]' : '{}'))); err.textContent = ''; } catch (e) { err.textContent = 'Błąd JSON: ' + e.message; } });
       const snips = {
         effects: [['Leczenie', { heal: 40, toxicity: 10 }], ['Efekt czasowy', { toxicity: 20, effect: { name: 'Nazwa efektu', stats: { sila: 3 }, minutes: 30 } }],
           ['Przemiana (mutacja)', { mutation: { name: 'Nazwa przemiany', stats: { sila: 2, odpornosc: -1 } }, toxicity: 60, risk: 0.2 }],
           ['Olej na ostrze', { oil: { family: 'upior', bonus: 0.6 } }], ['Rzut w walce', { throw: { dmg: 12, family: ['upior'], mult: 2, text: 'Rzucasz…' } }],
-          ['Broń', { attack: 5, tags: ['srebro'] }], ['Pancerz', { armor: 3 }]],
+          ['Broń', { attack: 5, tags: ['srebro'], kind: 'miecz' }], ['Broń dwuręczna', { attack: 10, kind: 'drzewcowa', two_handed: true }],
+          ['Pancerz / odzienie', { armor: 3, stats: { odpornosc: 1 } }],
+          ['Rękawica (zmienia broń w tej ręce)', { armor: 1, weapon_mods: { attack_pct: 20, attack: 0, crit: 3, tags: [], kinds: ['miecz', 'sztylet'] } }],
+          ['Biżuteria (cechy)', { stats: { moc: 2 } }]],
+        uses: [['Odpoczynek', { label: 'Ogrzej się', glyph: '♨', heal: 20, vigor: 10, cooldown_s: 600, wear: 1, text: 'Ciepło wraca do kości.' }],
+          ['Ofiara → efekt', { label: 'Złóż ofiarę', glyph: '🕯️', cost: [{ item: 'swieca', qty: 1 }], effect: { name: 'Łaska', stats: { moc: 2 }, minutes: 60 }, cooldown_s: 3600, text: 'Dar przyjęty.' }],
+          ['Wytwarzanie / zbiór', { label: 'Zbierz', glyph: '🌾', cooldown_s: 3600, loot: [{ item: 'krwawnik', chance: 0.6, min: 1, max: 2 }], text: 'Zbierasz plon.' }],
+          ['Oczyszczenie', { label: 'Oczyść się', glyph: '♒', cost: [{ item: 'szalwia', qty: 1 }], toxicity: -25, cooldown_s: 900 }]],
         outcome: [['Ilość (znalezisko)', { qty: [1, 3] }], ['Proste skutki', { hp: -10, coins: [3, 10], xp: 10, toxicity: 5 }],
           ['Efekt', { effect: { name: 'Błogosławieństwo', stats: { moc: 2 }, minutes: 30 }, xp: 10 }],
           ['Przedmioty', { items: [{ item: 'krwawnik', qty: [1, 2], chance: 1 }] }], ['Potwór na końcu', { monster: 'wilk' }],
@@ -325,7 +333,7 @@ const Admin = {
       for (const [name, obj] of snips) {
         sbox.append(h('button', { class: 'chip', onclick: () => {
           let cur; try { cur = JSON.parse(ta.value || 'null'); } catch (e) { cur = null; }
-          const next = type === 'actions' ? [...(Array.isArray(cur) ? cur : []), obj] : Object.assign({}, cur && typeof cur === 'object' ? cur : {}, obj);
+          const next = isList ? [...(Array.isArray(cur) ? cur : []), obj] : Object.assign({}, cur && typeof cur === 'object' ? cur : {}, obj);
           ta.value = JSON.stringify(next, null, 2); set(next); err.textContent = '';
         } }, name));
       }

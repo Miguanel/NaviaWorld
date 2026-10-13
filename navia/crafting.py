@@ -17,8 +17,36 @@ BUILDING_TOOLS = {
 }
 
 
+# Rozdziały Księgi receptur. Receptura trafia do rozdziału według pola „category” (panel admina),
+# a gdy jest puste — według kategorii przedmiotu, który powstaje.
+RECIPE_GROUPS = [
+    {"id": "eliksiry", "name": "Eliksiry", "glyph": "🧪", "cats": ["eliksir"]},
+    {"id": "oleje", "name": "Oleje na ostrze", "glyph": "🕯️", "cats": ["olej"]},
+    {"id": "przemiany", "name": "Wywary przemiany", "glyph": "🐺", "cats": ["wywar"]},
+    {"id": "orez", "name": "Oręż i tarcze", "glyph": "⚔️", "cats": ["bron", "tarcza"]},
+    {"id": "stroj", "name": "Odzienie i biżuteria", "glyph": "🧥", "cats": ["pancerz", "rekawice", "bizuteria"]},
+    {"id": "oboz", "name": "Obozowisko", "glyph": "🔥", "cats": ["konstrukcja"]},
+    {"id": "narzedzia", "name": "Narzędzia", "glyph": "⚒️", "cats": ["narzedzie"]},
+    {"id": "jadlo", "name": "Jadło i napitki", "glyph": "🍞", "cats": ["jedzenie"]},
+    {"id": "surowce", "name": "Surowce i katalizatory", "glyph": "✴️", "cats": []},
+]
+
+
+def recipe_group(recipe, result_item=None):
+    if recipe.get("category") and any(g["id"] == recipe["category"] for g in RECIPE_GROUPS):
+        return recipe["category"]
+    cat = (result_item or {}).get("category")
+    for g in RECIPE_GROUPS:
+        if cat in g["cats"]:
+            return g["id"]
+    return "surowce"
+
+
 def known_recipe_ids(user_id):
-    return {r["recipe_id"] for r in query("SELECT recipe_id FROM known_recipes WHERE user_id=?", (user_id,))}
+    """Receptury wyuczone + wszystkie „znane od startu” (także te dodane w aktualizacjach gry)."""
+    known = {r["recipe_id"] for r in query("SELECT recipe_id FROM known_recipes WHERE user_id=?", (user_id,))}
+    known |= {rid for rid, r in content()["recipes"].items() if r.get("known_by_default")}
+    return known
 
 
 class Workshop:
@@ -125,7 +153,9 @@ def evaluate(ch, recipe, ws, selected=None):
     return {
         "id": recipe["id"], "name": recipe["name"], "description": recipe.get("description", ""),
         "result": {"item": recipe.get("result_item"), "name": res.get("name", "?"), "glyph": res.get("glyph", "?"),
-                   "qty": recipe.get("result_qty", 1), "description": res.get("description", "")},
+                   "qty": recipe.get("result_qty", 1), "description": res.get("description", ""),
+                   "category": res.get("category"), "rarity": res.get("rarity")},
+        "group": recipe_group(recipe, res),
         "ingredients": ingredients, "tools": tools, "tool_mode": mode, "catalysts": cats,
         "station": {"id": recipe.get("station") or "any", "label": st_label, "ok": st_ok},
         "chance": round(chance, 1),

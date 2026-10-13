@@ -406,7 +406,7 @@ const Game = {
   /** Tryb wskazywania miejsca na mapie (budowa, przenoszenie obozu) */
   pickOnMap(text, cb) {
     if (MapView.disabled) return toast('Mapa niedostępna.', 'err');
-    Modal.close(); Sheet.close();
+    Modal.close(); Sheet.close(); Win.close();
     this.pick = cb;
     document.body.classList.add('picking');
     const b = $('#pick-banner');
@@ -420,81 +420,8 @@ const Game = {
     $('#pick-banner').classList.add('hidden');
   },
 
-  // ----------------------------------------------------------- obóz / siedlisko: plan i rozbudowa
-  async openSite(kind, owner) {
-    try {
-      const v = await API.get(`/site/${kind}` + (owner ? `?owner=${owner}` : ''));
-      if (!v) return toast(kind === 'camp' ? 'Nie masz rozbitego obozu.' : 'Brak siedliska.', 'err');
-      MapView.map && MapView.map.closePopup();
-      this.renderSite(v);
-    } catch (e) { toast(e.message, 'err'); }
-  },
-
-  async siteAction(path, body, v) {
-    try {
-      const r = await API.post(path, body);
-      this.applyState(r.state, { silent: true });
-      toastAll(r.result.messages, 'good');
-      await this.loadWorld();
-      if (v) this.openSite(v.type, v.type === 'base' ? v.owner_id : undefined);
-    } catch (e) { toast(e.message, 'err'); }
-  },
-
-  renderSite(v) {
-    const isCamp = v.type === 'camp';
-    const own = isCamp || v.own;
-    const where = isCamp ? 'camp' : 'base';
-    const conn = v.structures.filter(s => s.connected).length;
-    const parts = [
-      h('div', { class: 'row' }, h('span', { style: { fontSize: '44px' } }, g(isCamp ? '🔥' : '🏚️')),
-        h('div', {}, h('div', { class: 'event-kicker' }, isCamp ? 'Twój obóz' : (v.own ? 'Twoje siedlisko' : 'Siedlisko gościnne')),
-          h('h2', { style: { fontSize: '26px' } }, v.name))),
-      h('p', { class: 'muted' }, (isCamp ? `Ogień dogaśnie za ${v.left_h} h. ` : '') +
-        `Centrum ma krąg ${v.radius} m. Połączonych budynków: ${conn} z ${v.structures.length}.`),
-      h('div', { class: 'octo-hint' }, 'Każdy budynek ma mały krąg. Jeśli styka się z centrum albo z innym połączonym budynkiem, ich obszary zlewają się w jedną „ośmiornicę” — w całym jej zasięgu korzystasz z każdego połączonego budynku. Budynek postawiony osobno działa tylko, gdy stoisz w jego kręgu.'),
-      h('div', { class: 'section-title' }, 'Budynki'),
-    ];
-    if (!v.structures.length) parts.push(h('p', { class: 'muted' }, 'Jeszcze nic tu nie stoi.'));
-    for (const s of v.structures) {
-      const cost = (s.repair_cost || []).map(r => `${this.content.items[r.item]?.name || r.item} ×${r.qty}`).join(', ');
-      const d = distM(this.pos[0], this.pos[1], s.lat, s.lng);
-      parts.push(h('div', { class: 'site-struct' },
-        h('span', { class: 'sg' }, g(s.glyph)),
-        h('div', {},
-          h('div', { class: 'row' }, h('strong', {}, s.name), h('span', { class: 'spacer' }),
-            h('span', { class: 'chip ' + (s.connected ? 'ok' : 'warn') }, s.connected ? 'połączony' : 'osobno')),
-          h('div', { class: 'row', style: { gap: '6px', marginTop: '4px' } }, h('div', { class: 'dur' }, h('i', { style: { width: s.pct + '%' } })),
-            h('span', { class: 'faint', style: { fontSize: '12px' } }, `${s.pct}% · krąg ${Math.round(s.radius)} m · ${fmtDist(d)} stąd`)),
-          h('div', { class: 'row wrap', style: { marginTop: '6px' } },
-            h('button', { class: 'btn small', onclick: () => this.siteAction('/structure/repair', { id: s.id }, v) }, 'Napraw' + (cost ? ` (${cost})` : '')),
-            own ? h('button', { class: 'btn small ghost', onclick: () => this.siteAction('/structure/pickup', { id: s.id }, v) }, 'Zabierz') : null,
-            h('button', { class: 'btn small ghost', onclick: () => { Modal.close(); MapView.follow = false; MapView.map.setView([s.lat, s.lng], 18); } }, 'Pokaż')))));
-    }
-    if (own) {
-      parts.push(h('div', { class: 'section-title' }, isCamp ? 'Rozbudowa obozu' : 'Rozbudowa siedliska'));
-      const placeable = this.state.inventory.filter(i => i.placeable);
-      if (!placeable.length) {
-        parts.push(h('p', { class: 'muted' }, 'Nie masz w torbie żadnego budynku. Wytwórz go w Księdze receptur: kamienne palenisko, stół zielarza, suszarnię, ołtarzyk Welesa, kocioł, kowadło…'),
-          h('button', { class: 'btn small', onclick: () => { Modal.close(); this.openSheet('recipes'); } }, 'Otwórz Księgę receptur'));
-      }
-      for (const it of placeable) {
-        parts.push(h('div', { class: 'row wrap', style: { padding: '6px 0', borderBottom: '1px solid rgba(59,50,41,.5)' } },
-          g(it.glyph), h('span', { style: { flex: 1 } }, `${it.name} ×${it.qty}`),
-          h('button', { class: 'btn small', onclick: () => this.siteAction('/structure/place', { item: it.id, where }, v) }, 'Postaw tutaj'),
-          h('button', { class: 'btn small', onclick: () => this.pickOnMap(`Wskaż, gdzie postawić: ${it.name} (do ${this.cfg.build_reach} m od ciebie).`,
-            ll => this.siteAction('/structure/place', { item: it.id, where, lat: ll.lat, lng: ll.lng }, v)) }, 'Wskaż na mapie')));
-      }
-      parts.push(h('div', { class: 'section-title' }, 'Przeniesienie'),
-        h('p', { class: 'muted', style: { marginTop: 0 } }, `Wszystkie budynki przeniosą się razem z ${isCamp ? 'obozem' : 'siedliskiem'}, zachowując układ.`),
-        h('div', { class: 'row wrap' },
-          h('button', { class: 'btn small', onclick: () => this.pickOnMap(`Wskaż nowe miejsce ${isCamp ? 'obozu' : 'siedliska'} na mapie.`,
-            ll => this.siteAction('/site/move', { where, lat: ll.lat, lng: ll.lng }, v)) }, '✥ Wskaż na mapie'),
-          h('button', { class: 'btn small ghost', onclick: () => this.siteAction('/site/move', { where, lat: this.pos[0], lng: this.pos[1] }, v) }, 'Przenieś tutaj')));
-      if (isCamp) parts.push(h('button', { class: 'btn small', style: { marginTop: '10px' }, onclick: () => this.siteAction('/camp/feed', {}, v) }, 'Dorzuć 2 drewna (+6 h)'));
-    }
-    parts.push(h('button', { class: 'btn ghost block', style: { marginTop: '14px' }, onclick: () => Modal.close() }, 'Zamknij'));
-    Modal.open(parts);
-  },
+  // ----------------------------------------------------------- obóz / siedlisko (okna: camp.js)
+  openSite(kind, owner) { CampUI.openSite(kind, owner); },
 
   // ----------------------------------------------------------- eksploracja
   async explore() {
@@ -693,10 +620,9 @@ const Game = {
 
   renderChar(body) {
     const c = this.state.char;
-    body.append(h('div', { class: 'card' },
-      h('div', { class: 'row' }, h('div', { style: { width: '64px' }, html: '<svg viewBox="0 0 100 140" style="width:64px;height:80px"><use href="#hunter"/></svg>' }),
-        h('div', {}, h('h3', { style: { fontSize: '24px' } }, c.name), h('div', { class: 'sc muted' }, `Łowca · poziom ${c.level}`),
-          h('div', { class: 'muted', style: { fontSize: '13px' } }, `${c.weapon ? `${c.weapon.glyph} ${c.weapon.name} (atak +${c.weapon.attack})` : 'bez broni'} · ${c.armor ? `${c.armor.name} (+${c.armor.armor})` : 'bez pancerza'}`)))));
+    body.append(h('div', { class: 'row', style: { marginBottom: '4px' } },
+      h('div', {}, h('h3', { style: { fontSize: '24px' } }, c.name), h('div', { class: 'sc muted' }, `Łowca · poziom ${c.level}`))));
+    Gear.render(body);
     body.append(h('div', { class: 'section-title' }, `Cechy${c.stat_points ? ` · ${c.stat_points} pkt do rozdania` : ''}`));
     for (const [k, name] of Object.entries(this.cfg.stat_names)) {
       const base = c.base_stats[k] ?? 0, eff = c.stats[k] ?? base, mod = Math.round((eff - base) * 10) / 10;
@@ -705,7 +631,7 @@ const Game = {
         h('span', { class: 'v' }, eff),
         c.stat_points ? h('button', { class: 'plus', onclick: () => this.post('/stats/raise', { stat: k }) }, '+') : null));
     }
-    body.append(h('p', { class: 'hint' }, 'Siła — obrażenia. Zręczność — celność, kolejność w walce, ucieczka. Witalność — zdrowie. Moc — czary i wigor. Odporność — obrona i tolerancja toksyn. Alchemia — szansa tworzenia. Percepcja — łupy i trafienia krytyczne. Modyfikatory pochodzą z przemian, eliksirów i punktów mocy.'));
+    body.append(h('p', { class: 'hint' }, 'Siła — obrażenia. Zręczność — celność, kolejność w walce, ucieczka. Witalność — zdrowie. Moc — czary i wigor. Odporność — obrona i tolerancja toksyn. Alchemia — szansa tworzenia. Percepcja — łupy i trafienia krytyczne. Modyfikatory pochodzą z przemian, eliksirów, stroju i punktów mocy.'));
     body.append(h('div', { class: 'section-title' }, `Przemiany (${c.mutations.length}/${c.mutation_slots})`));
     if (!c.mutations.length) body.append(h('p', { class: 'muted' }, 'Twoje ciało jest jeszcze ludzkie. Wywary przemiany zmieniają cechy na zawsze — ale mogą zabić.'));
     for (const m of c.mutations) body.append(h('div', { class: 'card' }, h('strong', {}, m.name), h('div', { class: 'muted' }, this.fmtStats(m.stats))));
@@ -738,8 +664,9 @@ const Game = {
       body.append(h('div', { class: 'card' },
         h('div', { class: 'row' }, h('span', { style: { fontSize: '28px' } }, '🔥'), h('div', {}, h('strong', {}, 'Twój obóz'),
           h('div', { class: 'muted', style: { fontSize: '13px' } }, `Ogień dogaśnie za ${camp.left_h} h · ${Math.round(d)} m stąd`))),
-        h('div', { class: 'row', style: { marginTop: '10px' } },
-          h('button', { class: 'btn small primary', onclick: () => this.openSite('camp') }, 'Plan i rozbudowa'),
+        h('div', { class: 'row wrap', style: { marginTop: '10px' } },
+          h('button', { class: 'btn small primary', onclick: () => CampUI.openBuild('camp') }, '🔨 Rozbuduj'),
+          h('button', { class: 'btn small', onclick: () => this.openSite('camp') }, 'Plan obozu'),
           h('button', { class: 'btn small', onclick: () => this.post('/camp/feed') }, 'Dorzuć 2 drewna (+6 h)'),
           h('button', { class: 'btn small ghost', onclick: () => { if (!MapView.disabled) MapView.map.setView([camp.lat, camp.lng], 17); Sheet.close(); } }, 'Pokaż na mapie'))));
     } else {
@@ -754,7 +681,8 @@ const Game = {
       h('p', { style: { margin: '0 0 8px' } }, home ? 'Twoje siedlisko jest dyskretne: widzisz je tylko ty i ci, których zaprosisz. Sprzęt postawiony tu z czasem niszczeje — naprawiaj go składnikami.' : 'Nie masz jeszcze siedliska. Wybierz miejsce — najlepiej dom.'),
       h('div', { class: 'row wrap' },
         h('button', { class: 'btn small', onclick: async () => { const r = await this.post('/home/set'); if (r) this.loadWorld(); } }, home ? 'Przenieś siedlisko tutaj' : 'Załóż siedlisko tutaj'),
-        home ? h('button', { class: 'btn small primary', onclick: () => this.openSite('base') }, 'Plan i rozbudowa') : null,
+        home ? h('button', { class: 'btn small primary', onclick: () => CampUI.openBuild('base') }, '🔨 Rozbuduj') : null,
+        home ? h('button', { class: 'btn small', onclick: () => this.openSite('base') }, 'Plan siedliska') : null,
         home ? h('button', { class: 'btn small ghost', onclick: () => { if (!MapView.disabled) MapView.map.setView(home, 17); Sheet.close(); } }, 'Pokaż na mapie') : null)));
     if (home) {
       const inp = h('input', { placeholder: 'Imię łowcy do zaproszenia' });
@@ -770,7 +698,8 @@ const Game = {
       body.append(h('div', { class: 'card' },
         h('div', { class: 'row' }, h('span', { style: { fontSize: '26px' } }, g(x.glyph)), h('div', { style: { flex: 1 } }, h('strong', {}, x.name),
           h('div', { class: 'row', style: { gap: '6px' } }, h('div', { class: 'dur' }, h('i', { style: { width: x.pct + '%' } })), h('span', { class: 'faint', style: { fontSize: '12px' } }, `${x.pct}% · −${x.decay_per_hour}/h`)))),
-        h('div', { class: 'row', style: { marginTop: '8px' } },
+        h('div', { class: 'row wrap', style: { marginTop: '8px' } },
+          h('button', { class: 'btn small' + (x.uses ? ' primary' : ''), onclick: () => CampUI.openStruct(x.id) }, x.uses ? `✦ Użyj (${x.uses})` : 'Otwórz'),
           h('button', { class: 'btn small', onclick: () => this.post('/structure/repair', { id: x.id }) }, 'Napraw' + (cost ? ` (${cost})` : '')),
           x.owner_id ? h('button', { class: 'btn small ghost', onclick: () => this.post('/structure/pickup', { id: x.id }) }, 'Zabierz') : null)));
     }

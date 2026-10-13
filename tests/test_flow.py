@@ -433,6 +433,106 @@ def test_influence_and_contract_finder():
     assert all("lat" in l and "lng" in l for l in r.json["leads"])
 
 
+def test_equipment_slots_and_gloves():
+    c, h, uid = client("Rycerz")
+    st = c.get("/api/state", headers=h).json["state"]
+    eq = {x["slot"]: x["item"] for x in st["char"]["equipment"]["slots"]}
+    assert eq["hand_r"]["id"] == "kord"  # startowy kord założony automatycznie
+    assert not any(i["id"] == "kord" for i in st["inventory"])
+    base = st["char"]["equipment"]["gear"]["attack"]
+    assert base == 3
+    for it in ["rekawica_szermiercza", "rekawica_kowalska", "noz_mysliwski", "wlocznia", "puklerz", "kaptur", "kastet_wilczy"]:
+        give(uid, it)
+    r = c.post("/api/equip", json={"item": "rekawica_szermiercza", "slot": "glove_r"}, headers=h)
+    assert r.status_code == 200, r.json
+    g = r.json["state"]["char"]["equipment"]["gear"]
+    assert g["attack"] == round(3 * 1.22, 1) and g["crit"] == 4, g
+    # rękawica kowalska na lewej, nóż w lewej: rękawica nie działa na sztylet
+    c.post("/api/equip", json={"item": "rekawica_kowalska", "slot": "glove_l"}, headers=h)
+    r = c.post("/api/equip", json={"item": "noz_mysliwski", "slot": "hand_l"}, headers=h)
+    g = r.json["state"]["char"]["equipment"]["gear"]
+    left = [x for x in g["hands"] if x["side"] == "left"][0]
+    assert left["attack"] == 2 and not left["gloves"][0]["applies"]
+    assert g["attack"] == round(3.7 + 1, 1), g
+    # broń dwuręczna zdejmuje lewą rękę i korzysta z obu rękawic po połowie
+    r = c.post("/api/equip", json={"item": "wlocznia"}, headers=h)
+    assert r.status_code == 200, r.json
+    st = r.json["state"]
+    eq = {x["slot"]: x["item"] for x in st["char"]["equipment"]["slots"]}
+    assert eq["hand_r"]["id"] == "wlocznia" and eq["hand_l"] is None
+    assert any(i["id"] == "kord" for i in st["inventory"]) and any(i["id"] == "noz_mysliwski" for i in st["inventory"])
+    # tarcza w lewą rękę zdejmuje dwuręczną broń
+    r = c.post("/api/equip", json={"item": "puklerz"}, headers=h)
+    eq = {x["slot"]: x["item"] for x in r.json["state"]["char"]["equipment"]["slots"]}
+    assert eq["hand_l"]["id"] == "puklerz" and eq["hand_r"] is None
+    assert r.json["state"]["char"]["equipment"]["gear"]["stats"]["zrecznosc"] == 2  # puklerz +1, rękawica szermiercza +1
+    # kastet działa tylko na pięść
+    c.post("/api/unequip", json={"slot": "glove_l"}, headers=h)
+    r = c.post("/api/equip", json={"item": "kastet_wilczy", "slot": "glove_r"}, headers=h)
+    g = r.json["state"]["char"]["equipment"]["gear"]
+    assert g["attack"] == 5, g
+    r = c.post("/api/equip", json={"item": "kaptur"}, headers=h)
+    assert r.json["state"]["char"]["equipment"]["gear"]["stats"]["percepcja"] == 1
+    assert c.post("/api/equip", json={"item": "krwawnik"}, headers=h).status_code == 400
+    assert c.post("/api/equip", json={"item": "kaptur", "slot": "feet"}, headers=h).status_code == 400
+    r = c.post("/api/unequip", json={"slot": "head"}, headers=h)
+    assert any(i["id"] == "kaptur" for i in r.json["state"]["inventory"])
+    # walka korzysta z ekwipunku
+    set_combat(uid, "wilk")
+    st = c.get("/api/state", headers=h).json["state"]
+    assert st["combat"]["me"]["protection"] >= 2
+    assert c.post("/api/equip", json={"item": "kord"}, headers=h).status_code == 400  # nie w walce
+
+
+def test_camp_build_window_and_structure_use():
+    c, h, uid = client("Ciesla2")
+    goto(c, h, "zones", "las")
+    give(uid, "drewno", 20); give(uid, "kamien", 6); give(uid, "krwawnik", 1); give(uid, "skora_wilka", 2)
+    assert c.post("/api/camp/build", headers=h).status_code == 200
+    b = c.get("/api/site/camp/buildables", headers=h).json
+    names = {x["item"]: x for x in b["buildings"]}
+    assert "ognisko_kamienne" in names and names["ognisko_kamienne"]["recipe"]["can"]
+    assert names["kociol_alchemiczny"]["recipe"] and not names["kociol_alchemiczny"]["recipe"]["can"]  # kuźnia
+    assert names["ognisko_kamienne"]["uses"] and names["ognisko_kamienne"]["tool_for"]
+    sql("UPDATE recipes SET base_chance=100 WHERE id IN ('r_ognisko','r_stol')")
+    from navia.db import bump_content
+    bump_content()
+    r = c.post("/api/site/build", json={"where": "camp", "recipe": "r_ognisko"}, headers=h)
+    assert r.status_code == 200, r.json
+    assert r.json["result"]["placed"]
+    st = r.json["state"]
+    fire = [s for s in st["structures"] if s["item_id"] == "ognisko_kamienne"][0]
+    assert fire["uses"] == 1
+    # za daleko — nic się nie zużywa
+    me = st["char"]
+    before = sum(i["qty"] for i in st["inventory"] if i["id"] == "drewno")
+    r = c.post("/api/site/build", json={"where": "camp", "recipe": "r_ognisko", "lat": me["lat"] + 0.01, "lng": me["lng"]}, headers=h)
+    assert r.status_code == 400
+    st = c.get("/api/state", headers=h).json["state"]
+    assert sum(i["qty"] for i in st["inventory"] if i["id"] == "drewno") == before
+    # okno budynku i użycie
+    d = c.get(f"/api/structure/{fire['id']}", headers=h).json
+    assert d["in_reach"] and d["uses"][0]["label"] and any(r_["id"] == "r_ryba" for r_ in d["recipes"])
+    sql("UPDATE characters SET hp=10 WHERE user_id=?", (uid,))
+    r = c.post("/api/structure/use", json={"id": fire["id"], "index": 0}, headers=h)
+    assert r.status_code == 200, r.json
+    assert r.json["state"]["char"]["hp"] >= 30
+    assert c.post("/api/structure/use", json={"id": fire["id"], "index": 5}, headers=h).status_code == 400
+    # stół zielarza: koszt i efekt
+    give(uid, "zywica", 1)
+    r = c.post("/api/site/build", json={"where": "camp", "recipe": "r_stol"}, headers=h)
+    assert r.status_code == 200, r.json
+    table = [s for s in r.json["state"]["structures"] if s["item_id"] == "stol_zielarski"][0]
+    r = c.post("/api/structure/use", json={"id": table["id"], "index": 0}, headers=h)
+    assert r.status_code == 200, r.json
+    assert any(e["name"] == "Oko zielarza" for e in r.json["state"]["char"]["effects"])
+    r = c.post("/api/structure/use", json={"id": table["id"], "index": 0}, headers=h)
+    assert r.status_code == 400 and "Potrzebujesz" in r.json["error"]  # krwawnik zużyty
+    # inny gracz nie zajrzy do cudzego obozu
+    c2, h2, _ = client("Podgladacz")
+    assert c2.get(f"/api/structure/{fire['id']}", headers=h2).status_code == 400
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

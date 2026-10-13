@@ -200,18 +200,36 @@ Przy każdym zleceniu na tablicy jest **🧭 Gdzie?**, a w Postaci przy przyjęt
 ### Mutacje
 Wywary przemiany zmieniają cechy **na zawsze**. Dodają toksyczność i niosą ryzyko porażki, które rośnie, gdy przekroczysz limit toksyn. Liczba przemian zależy od poziomu postaci.
 
+### Strój i oręż (karta Postać)
+- W karcie postaci jest „lalka” z miejscami na strój: **głowa, szyja, płaszcz, tułów, pas, nogi, stopy, prawa i lewa rękawica, prawa i lewa ręka (broń albo tarcza), dwa pierścienie**. Dotknij miejsca, żeby zobaczyć, co tam masz, zdjąć to albo założyć coś z torby.
+- **Każda ręka ma własną rękawicę.** Rękawica zmienia broń trzymaną w tej samej ręce: np. rękawica szermiercza daje +22% ataku mieczom i sztyletom, kowalska +20% toporom i obuchom, rękawica ze srebrną nicią sprawia, że broń rani jak srebro, a wilczy kastet działa tylko na gołą pięść. Karta pokazuje dla każdej ręki: atak broni → atak z rękawicą.
+- Dwie bronie: mocniejsza liczy się w całości, druga w połowie. **Broń dwuręczna** (włócznia, berdysz) zajmuje obie ręce i korzysta z obu rękawic (każda działa w połowie).
+- Pancerz sumuje się z całego stroju (także rękawic i tarczy), a strój może zmieniać cechy (np. kaptur +1 Percepcja).
+- W **Torbie** przedmioty do ubrania mają przyciski **Załóż** albo **⇄ Podmień** (z nazwą tego, co zdejmiesz) i porównanie liczb z tym, co masz na sobie.
+- Po aktualizacji gra sama zakłada graczom najlepszą broń i pancerz, które mieli w torbie.
+
 ### Rozbudowa obozu i siedliska („ośmiornica”)
-- Dotknij swojego obozu albo siedliska na mapie (albo w Obozowisku wybierz **Plan i rozbudowa**). Zobaczysz budynki i opcje rozbudowy.
+- Dotknij swojego obozu albo siedliska na mapie (albo w Obozowisku wybierz **Plan obozu**). Zobaczysz budynki, a przycisk **🔨 Rozbuduj** otwiera okno rozbudowy.
+- **Okno rozbudowy** ma listę wszystkich budynków, które można postawić, z podglądem jak w Księdze receptur: składniki, narzędzia, miejsce, katalizatory i szansa, a do tego zasięg kręgu, wytrzymałość, co można w budynku robić i przy jakich recepturach pomaga. **Zbuduj tutaj** wytwarza budynek i od razu go stawia (albo **wskaż na mapie**). Budynki z torby stawiasz przyciskiem **Postaw tutaj**.
+- **Okno budynku** (przycisk **✦ Użyj**): działania budynku, np. ogrzanie się przy palenisku, ofiara na ołtarzyku Welesa (efekt na godzinę), zdjęcie suszu z suszarni, naostrzenie ostrza na kowadle, sen na posłaniu, woda z beczki. Każde działanie ma koszt, odnowienie i zużywa trochę wytrzymałości. Niżej są receptury, przy których ten budynek pomaga — można je wykonać od razu. Działania budynków ustawiasz w panelu admina (pole „Użycie budynku”).
 - Budynki (kamienne palenisko, stół zielarza, suszarnia, ołtarzyk Welesa, kocioł, kowadło) stawiasz **tam, gdzie stoisz**, albo **wskazujesz miejsce na mapie**: do 60 m od siebie i do 250 m od centrum.
 - Każdy budynek ma **mały krąg** (15–24 m; admin ustawia go w polu „Zasięg budynku”). Krąg centrum ma 45 m. Gdy krąg budynku styka się z centrum albo z innym połączonym budynkiem, ich obszary **zlewają się w jeden kształt** z odnóżami, czyli w „ośmiornicę”. W całym tym obszarze jesteś „w obozie” i korzystasz z każdego połączonego budynku.
 - Budynek postawiony osobno działa tylko wtedy, gdy stoisz w jego własnym kręgu. Żeby go połączyć, postaw coś pomiędzy.
 - **Przenoszenie:** „Wskaż na mapie” albo „Przenieś tutaj” przenosi cały obóz lub siedlisko w wybrane miejsce. Budynki przenoszą się razem z nim i zachowują układ.
+
+### Księga receptur
+- Receptury są podzielone na **rozdziały** (eliksiry, oleje, przemiany, oręż, odzienie, obozowisko, narzędzia, jadło, surowce). Rozwinięty jest jeden rozdział i jedna receptura naraz — otwarcie innej zwija resztę.
+- **Sortuj**: gotowe najpierw, nazwa, największa szansa, najmniej braków, poziom.
+- **Mogę wykonać / Nie mogę**: pokazuje tylko receptury, które da się teraz zrobić, albo tylko te, którym czegoś brakuje.
+- **Z surowca**: wybierz surowiec (najpierw te, które masz w torbie), a zobaczysz tylko receptury, które go używają. To samo robi przycisk **📖 W księdze** przy przedmiocie w torbie.
+- Rozdział receptury można zmienić w panelu admina (pole „Rozdział w Księdze receptur”).
 
 ### Strzałka z Księgi receptur
 Dotknij składnika albo narzędzia w recepturze. Na mapie od razu pojawi się strzałka do najbliższego miejsca, gdzie go zdobędziesz, a gra poda odległość i **azymut** (np. „298 m, azymut 58°, północny wschód”).
 
 ### Torba
 Widok „Wszystko” jest podzielony na grupy (Surowce, Alchemia, Wyposażenie, Obozowisko, Prowiant i skarby), a w nich na sekcje kategorii z liczbą rodzajów i sztuk. Sekcje zwijasz dotknięciem nagłówka, a gra to zapamiętuje.
+Dotknięty przedmiot **rozwija się w siatce** (bez okna modalnego): opis, efekty i przyciski akcji — Załóż/Podmień, Wypij, Postaw, Receptury z tym, W księdze, Połącz z…, Gdzie zdobyć, Wyrzuć.
 
 ### Wylogowanie
 Okrągły przycisk **⏻** na prawym pasku mapy, a także na dole panelu Postać i w panelu admina.
@@ -223,7 +241,7 @@ Okrągły przycisk **⏻** na prawym pasku mapy, a także na dole panelu Postać
 ---
 
 ## Panel admina (`/admin`)
-- **Przedmioty**: opis słowny, ikona, kategoria, efekty (wstawiane z gotowych wzorów: leczenie, efekt czasowy, mutacja, olej, rzut, broń, pancerz), narzędzia, katalizatory i konstrukcje.
+- **Przedmioty**: opis słowny, ikona, kategoria, efekty (wstawiane z gotowych wzorów: leczenie, efekt czasowy, mutacja, olej, rzut, broń, broń dwuręczna, odzienie, rękawica, biżuteria), narzędzia, katalizatory i konstrukcje. Pole **„Gdzie się zakłada”** (głowa, szyja, płaszcz, tułów, pas, nogi, stopy, rękawica, broń, tarcza, pierścień) i **„Użycie budynku”** (działania w oknie budynku).
 - **Receptury**: konfigurator łączenia przedmiotów. Składniki z ilościami, narzędzia, miejsce, suwak szansy bazowej, katalizatory z premią, przedmiot przy porażce i podgląd szans na żywo.
 - **Pula zdarzeń**: nowe akcje eksploracji z wagą, mnożnikami dla każdego terenu i punktu mocy, porą dnia, poziomami i skutkami.
 - **Potwory**: statystyki, ataki z efektami, słabości i łup.
@@ -246,6 +264,7 @@ navia/explore.py       – losowanie zdarzeń
 navia/combat.py        – walka turowa
 navia/crafting.py      – receptury, narzędzia, katalizatory
 navia/camp.py          – obozy, siedlisko, konstrukcje
+navia/build.py         – okno rozbudowy obozu i działania budynków
 navia/places.py        – budynki, targowiska i zbieractwo
 navia/trade.py         – kramy łowców (kupcy graczy)
 navia/finder.py        – tropiciel: gdzie zdobyć dany towar
@@ -253,6 +272,9 @@ navia/character.py     – postać, cechy, ekwipunek, mutacje
 navia/api.py, admin.py – REST API gry i panelu
 static/                – interfejs (HTML/CSS/JS), PWA, ikony
 static/js/auto.js      – auto-skan (farmienie)
+static/js/recipes.js   – Księga receptur (rozdziały, sortowanie, filtry)
+static/js/gear.js      – strój na karcie postaci
+static/js/camp.js      – okna: plan obozu, rozbudowa, budynki
 tests/test_flow.py     – testy całej pętli gry
 ```
 

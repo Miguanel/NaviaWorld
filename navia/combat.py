@@ -72,10 +72,9 @@ def _log(cb, who, text, out, detail=None):
 
 
 def _player_power(ch, d):
-    weapon, _ = chm.equipment(ch["user_id"])
-    watk = (weapon["effects"] or {}).get("attack", 0) if weapon else 0
-    tags = (weapon["effects"] or {}).get("tags", []) if weapon else []
-    return watk + d["stats"]["sila"] * 1.5 + ch["level"], tags, weapon
+    """Siła ataku: broń w obu rękach (zmieniona przez rękawice) + siła + poziom."""
+    gr = chm.gear(ch)
+    return gr["attack"] + d["stats"]["sila"] * 1.5 + ch["level"], gr["tags"], gr
 
 
 def _weak_mult(cb, tags, out, kind_tag=None):
@@ -144,7 +143,7 @@ def _player_turn(ch, cb, d, action, arg, out):
         base, tags, _ = _player_power(ch, d)
         mult, notes = _weak_mult(cb, tags, out)
         dmg = base * a["power"] * random.uniform(0.85, 1.05) * mult
-        dmg, info = _hit_monster(ch, cb, dmg, out, _crit(st), notes)
+        dmg, info = _hit_monster(ch, cb, dmg, out, _crit(st, ch), notes)
         _log(cb, "player", f"{a['name']}: {cb['name']} traci {dmg} HP.", out, f"trafienie {acc:.0f}% · {info}")
         if a.get("effect") == "expose":
             cb["ms"]["expose"] = 2
@@ -410,8 +409,8 @@ def _acc(a, st, cb):
     return max(25, min(99, a["acc"] + (st["zrecznosc"] - cb["speed"]) * 1.5))
 
 
-def _crit(st):
-    return 0.05 + st["percepcja"] * 0.006
+def _crit(st, ch=None):
+    return 0.05 + st["percepcja"] * 0.006 + (chm.gear(ch)["crit"] / 100.0 if ch else 0)
 
 
 def _flee(cb, st):
@@ -419,9 +418,7 @@ def _flee(cb, st):
 
 
 def _protection(ch, st):
-    _, armor = chm.equipment(ch["user_id"])
-    arm = (armor["effects"] or {}).get("armor", 0) if armor else 0
-    return arm + st["odpornosc"] * 0.5
+    return chm.gear_armor(ch) + st["odpornosc"] * 0.5
 
 
 def _range_dmg(cb, lo, hi):
@@ -442,7 +439,7 @@ def estimates(ch, cb, d):
         mult, notes = _weak_mult(cb, tags, [])
         lo, hi = base * a["power"] * 0.85 * mult, base * a["power"] * 1.05 * mult
         e = {"id": k, "name": a["name"], "glyph": a["glyph"], "desc": a["desc"], "cd": a["cd"], "cd_left": cds.get(k, 0),
-             "dmg": _range_dmg(cb, lo, hi), "hit": round(_acc(a, st, cb)), "crit": round(_crit(st) * 100),
+             "dmg": _range_dmg(cb, lo, hi), "hit": round(_acc(a, st, cb)), "crit": round(_crit(st, ch) * 100),
              "weak": [_note_name(n) for n in notes], "first": bool(a.get("priority"))}
         if a.get("effect") == "expose":
             e["effect"] = "odsłania wroga: obrona ×0,5 przez 2 tury"
@@ -470,7 +467,7 @@ def estimates(ch, cb, d):
         spells.append(e)
     flee = round(_flee(cb, st))
     me = {"power": round(base, 1), "protection": round(_protection(ch, st), 1), "speed": st["zrecznosc"],
-          "crit": round(_crit(st) * 100), "flee": flee}
+          "crit": round(_crit(st, ch) * 100), "flee": flee}
     foe_moves = []
     for mv in cb["moves"]:
         acc = max(30, min(97, (mv.get("acc") or 90) - (st["zrecznosc"] - cb["speed"]) * 1.0))

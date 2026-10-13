@@ -81,6 +81,65 @@ const Modal = {
   get isOpen() { return !!$('#modal-root').firstChild; },
 };
 
+/* Okno (większe niż modal): budowa obozu, budynki. Okna układają się w stos — „◂ Wróć” cofa do poprzedniego. */
+const Win = {
+  stack: [],
+  get isOpen() { return this.stack.length > 0; },
+  get top() { return this.stack[this.stack.length - 1]; },
+  open(opts) { this.stack = []; this.push(opts); },
+  push(opts) { this.stack.push(opts); this.paint(); },
+  back() { this.stack.pop(); this.stack.length ? this.paint() : this.close(); },
+  close() {
+    this.stack = [];
+    const r = $('#win-root');
+    if (r) r.innerHTML = '';
+    document.body.classList.remove('win-open');
+  },
+  /** Odświeża bieżące okno, zachowując przewinięcie. */
+  async refresh() {
+    if (!this.isOpen) return;
+    const body = $('#win-root .win-body');
+    const top = body ? body.scrollTop : 0;
+    await this.paint(true);
+    const nb = $('#win-root .win-body');
+    if (nb) nb.scrollTop = top;
+  },
+  async paint(keep) {
+    let root = $('#win-root');
+    if (!root) { root = h('div', { id: 'win-root' }); document.body.append(root); }
+    const o = this.top;
+    const titleEl = h('h2', {}, o.title || '');
+    const kickerEl = h('div', { class: 'event-kicker' }, o.kicker || '');
+    const body = h('div', { class: 'win-body' });
+    const panel = h('section', { class: 'win' + (keep ? ' still' : ''), role: 'dialog', 'aria-label': o.title || '' },
+      h('header', { class: 'win-head' },
+        this.stack.length > 1 ? h('button', { class: 'win-back', onclick: () => this.back(), title: 'Wróć' }, '◂') : h('span', { class: 'win-glyph' }, g(o.glyph || '❦')),
+        h('div', { class: 'win-titles' }, kickerEl, titleEl),
+        h('button', { class: 'x', onclick: () => this.close(), 'aria-label': 'Zamknij' }, '✕')),
+      body);
+    const wrap = h('div', { class: 'win-wrap' }, panel);
+    wrap.addEventListener('click', e => { if (e.target === wrap) this.close(); });
+    const old = root.firstChild;
+    if (old && keep) old.replaceWith(wrap); else { root.innerHTML = ''; root.append(wrap); }
+    document.body.classList.add('win-open');
+    const api = { setTitle: t => { titleEl.textContent = t; o.title = t; }, setKicker: k => { kickerEl.textContent = k; o.kicker = k; } };
+    if (!keep) body.append(h('div', { class: 'muted' }, 'Wczytuję…'));
+    try {
+      const frag = h('div', {});
+      await o.render(frag, api);
+      body.innerHTML = '';
+      body.append(...frag.childNodes);
+    } catch (e) {
+      body.innerHTML = '';
+      body.append(h('p', {}, e.message), h('button', { class: 'btn', onclick: () => this.back() }, '◂ Wróć'));
+    }
+  },
+};
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  if (Modal.isOpen) Modal.close(); else if (Win.isOpen) Win.back();
+});
+
 function bar(el, val, max) {
   el.style.width = Math.max(0, Math.min(100, 100 * val / Math.max(1, max))) + '%';
 }
@@ -100,7 +159,8 @@ function fmtDate(ts) {
 const CAT_NAMES = {
   ziolo: 'Zioła', grzyb: 'Grzyby', mineral: 'Minerały', drewno: 'Drewno', woda: 'Woda', czesc_potwora: 'Trofea',
   narzedzie: 'Narzędzia', konstrukcja: 'Konstrukcje', eliksir: 'Eliksiry', olej: 'Oleje', wywar: 'Przemiany',
-  katalizator: 'Katalizatory', bron: 'Broń', pancerz: 'Pancerze', jedzenie: 'Jadło', artefakt: 'Artefakty', inne: 'Inne',
+  katalizator: 'Katalizatory', bron: 'Broń', tarcza: 'Tarcze', pancerz: 'Odzienie i pancerze', rekawice: 'Rękawice',
+  bizuteria: 'Biżuteria', jedzenie: 'Jadło', artefakt: 'Artefakty', inne: 'Inne',
 };
 
 /* Waluta: 1 dobrota = 100 groszy */

@@ -116,7 +116,8 @@ def market_stock(pid, action):
 def view(ch, pid):
     p, bt = _building(ch, pid)
     c = content()
-    known = {r["recipe_id"] for r in query("SELECT recipe_id FROM known_recipes WHERE user_id=?", (ch["user_id"],))}
+    from .crafting import known_recipe_ids
+    known = known_recipe_ids(ch["user_id"])
     shop = []
     for s in bt.get("shop") or []:
         it = c["items"].get(s["item"])

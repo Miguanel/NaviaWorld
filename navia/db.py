@@ -18,7 +18,7 @@ from . import config
 
 # Pola przechowywane jako JSON w poszczególnych tabelach treści.
 JSON_FIELDS = {
-    "items": ["effects", "repair_cost"],
+    "items": ["effects", "repair_cost", "uses"],
     "recipes": ["ingredients", "tools", "catalysts"],
     "monsters": ["weaknesses", "loot", "moves"],
     "events": ["terrain_mods", "power_mods", "outcome"],
@@ -27,7 +27,7 @@ JSON_FIELDS = {
     "power_kinds": ["stat_mods", "names"],
     "building_types": ["actions", "shop", "teaches", "search_loot", "names"],
     "places": [],
-    "characters": ["stats", "mutations", "effects", "cooldowns", "combat", "contracts"],
+    "characters": ["stats", "mutations", "effects", "cooldowns", "combat", "contracts", "equipment"],
 }
 
 CONTENT_TABLES = ["items", "recipes", "monsters", "events", "gather_actions",
@@ -309,6 +309,10 @@ def content_version():
 # Nowe kolumny w istniejących bazach (aktualizacje gry): (tabela, kolumna, typ z wartością domyślną)
 MIGRATIONS = [
     ("items", "area_radius", "REAL DEFAULT 18"),
+    ("items", "slot", "TEXT DEFAULT ''"),
+    ("items", "uses", "TEXT DEFAULT '[]'"),
+    ("recipes", "category", "TEXT DEFAULT ''"),
+    ("characters", "equipment", "TEXT"),
 ]
 
 
@@ -340,6 +344,10 @@ def init_db(app):
             n = seed_missing()
             if n:
                 print(f"[navia] Dodano {n} nowych elementów treści z aktualizacji gry.")
+            from .seed import seed_backfill
+            n = seed_backfill()
+            if n:
+                print(f"[navia] Uzupełniono {n} przedmiotów o nowe pola (slot stroju, użycie budynku).")
         bump_content()
         ensure_admin()
         print(f"[navia] Baza danych: {BACKEND}")

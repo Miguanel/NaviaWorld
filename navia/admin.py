@@ -4,6 +4,7 @@ from flask import Blueprint, jsonify, request
 from . import character as chm
 from . import config
 from . import explore as explorem
+from .crafting import RECIPE_GROUPS
 from .api import admin_required
 from .db import (CONTENT_TABLES, JSON_FIELDS, PLAYER_TABLES, bump_content, content, dumps, execute,
                  fix_sequences, query, upsert)
@@ -13,7 +14,8 @@ bp = Blueprint("admin", __name__, url_prefix="/api/admin")
 EDITABLE = CONTENT_TABLES + ["places"]
 
 ITEM_CATEGORIES = ["ziolo", "grzyb", "mineral", "drewno", "woda", "czesc_potwora", "narzedzie", "konstrukcja",
-                   "eliksir", "olej", "wywar", "katalizator", "bron", "pancerz", "jedzenie", "artefakt", "inne"]
+                   "eliksir", "olej", "wywar", "katalizator", "bron", "tarcza", "pancerz", "rekawice", "bizuteria",
+                   "jedzenie", "artefakt", "inne"]
 RARITIES = ["pospolity", "niepospolity", "rzadki", "legendarny"]
 
 # Specyfikacja formularzy — panel buduje z niej edytory.
@@ -29,6 +31,8 @@ FIELDS = {
         ("area_radius", "number", "Zasięg budynku (m) — styka się z innymi, łącząc obszar"),
         ("max_durability", "number", "Wytrzymałość"), ("decay_per_hour", "number", "Utrata wytrzymałości / h"),
         ("repair_cost", "itemqty", "Koszt naprawy"),
+        ("uses", "uses", "Użycie budynku w obozie (JSON) — akcje w oknie budynku"),
+        ("slot", "select:slots", "Gdzie się zakłada (strój) — puste = nie do założenia / wg kategorii"),
     ],
     "recipes": [
         ("id", "key", "Identyfikator"), ("name", "text", "Nazwa"), ("description", "textarea", "Opis"),
@@ -39,6 +43,7 @@ FIELDS = {
         ("catalysts", "catalysts", "Katalizatory i pomocnicze narzędzia"), ("fail_item", "item?", "Przy porażce daj"),
         ("min_level", "number", "Min. poziom"), ("xp", "number", "Doświadczenie"),
         ("known_by_default", "bool", "Znana od startu"), ("enabled", "bool", "Włączona"),
+        ("category", "select:recipe_groups", "Rozdział w Księdze receptur (puste = według wyniku)"),
     ],
     "monsters": [
         ("id", "key", "Identyfikator"), ("name", "text", "Nazwa"), ("glyph", "glyph", "Ikona"),
@@ -108,7 +113,8 @@ def meta():
     return jsonify({
         "fields": FIELDS, "labels": TABLE_LABELS,
         "options": {
-            "categories": ITEM_CATEGORIES, "rarities": RARITIES, "tool_modes": ["any", "bag", "placed"],
+            "categories": ITEM_CATEGORIES, "rarities": RARITIES,
+            "slots": [""] + list(chm.ITEM_SLOT_TYPES), "recipe_groups": [""] + [g["id"] for g in RECIPE_GROUPS], "tool_modes": ["any", "bag", "placed"],
             "stations": stations, "event_kinds": ["monster", "item", "story"], "families": families,
             "weaknesses": weak, "layers": ["zone", "power", "building"],
             "gather_terrains": ["*"] + list(c["terrains"].keys()) + [f"power:{k}" for k in c["power_kinds"]],
